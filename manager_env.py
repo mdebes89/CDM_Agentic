@@ -7,32 +7,32 @@ Created on Sun Jul  6 15:07:58 2025
 
 import numpy as np
 import gymnasium as gym
-from cstr_env import make_cstr_env
+from first_order_env import make_first_order_env
 from config import agentic, ROLE_COSTS
 
 # Conditional imports for executor logic
 if agentic:
     from executor import (
-        validator_T, validator_C,
-        actionizer_T, actionizer_C,
+        validator_x1, validator_x2,
+        actionizer_x1, actionizer_x2,
         conditional_role, aggregate_actions
     )
 else:
     from deterministic_executor import (
-        validator_T, validator_C,
-        actionizer_T, actionizer_C,
+        validator_x1, validator_x2,
+        actionizer_x1, actionizer_x2,
         conditional_role, aggregate_actions
     )
 
 
 class HierarchicalManagerEnv(gym.Env):
     def __init__(self):
-        self.env = make_cstr_env()
-        # directly reuse the CSTR env’s spaces:
+        self.env = make_first_order_env()
+        # directly reuse the FO env’s spaces:
         self.observation_space = self.env.observation_space  # Box(shape=(3,),…)
         self.action_space      = gym.spaces.MultiBinary(4)   # manager picks 4 flag
         # 4) Define control variable order for a_space of shape (2,)
-        self.control_vars = ["coolant_flow", "feed_rate"]
+        self.control_vars = ["u1", "u2"]
 
         # 5) Storage for raw obs
         self.current_raw_obs = None
@@ -53,19 +53,19 @@ class HierarchicalManagerEnv(gym.Env):
 
         # 3) Executors produce a dict of control changes
         proposed = []
-        # validator_T
+        # validator_x1
         if flags[0]:
-            engaged_roles.append("validator_T")
-            if validator_T(raw):
-                engaged_roles.append("actionizer_T")
-                proposed.append(actionizer_T(raw))
+            engaged_roles.append("validator_x1")
+            if validator_x1(raw):
+                engaged_roles.append("actionizer_x1")
+                proposed.append(actionizer_x1(raw))
 
-        # validator_C
+        # validator_x2
         if flags[1]:
-            engaged_roles.append("validator_C")
-            if validator_C(raw):
-                engaged_roles.append("actionizer_C")
-                proposed.append(actionizer_C(raw))
+            engaged_roles.append("validator_x2")
+            if validator_x2(raw):
+                engaged_roles.append("actionizer_x2")
+                proposed.append(actionizer_x2(raw))
 
         # conditional wrapper
         if flags[2]:
@@ -79,8 +79,11 @@ class HierarchicalManagerEnv(gym.Env):
         else:
             final_dict = proposed[0] if proposed else {}
 
-        # 4) Flatten into the two-element [coolant_flow, feed_rate] array
-        action = np.array([ final_dict.get("coolant_flow", 0.0) ], dtype=np.float32)
+        # 4) Flatten into the two-element [u1, u2] array
+        action = np.array([
+            final_dict.get("u1", 0.0),
+            final_dict.get("u2", 0.0),
+        ], dtype=np.float32)
 
 
         # 5) Step the CSTR

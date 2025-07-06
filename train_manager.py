@@ -35,12 +35,15 @@ def main():
     model.learn(total_timesteps=200_000, callback=eval_cb)
     model.save("ppo_manager_cstr")
     
-    obs, _ = train_env.reset()
+    obs = train_env.reset()
+    
     for _ in range(50):
-        action, _ = model.predict(obs)
-        obs, reward, term, trunc, _ = train_env.step(action)
-        if term or trunc:
-            obs, _ = train_env.reset()
+        action, _ = model.predict(obs)              # predict still returns (action, state)
+        obs, rewards, dones, infos = train_env.step(action)
+    
+        # If that single env in the VecEnv signals done, reset (no unpacking)
+        if dones[0]:
+            obs = train_env.reset()
             
 def test(num_steps: int = 100):
     """Run a fixed-length rollout with the trained manager and

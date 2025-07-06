@@ -12,7 +12,7 @@ from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 llm = ChatOpenAI(model="gpt-4", temperature=0.0)
 
 # 1. Validator Role Template
-validator_template = ChatPromptTemplate.from_template(
+validator_x1emplate = ChatPromptTemplate.from_template(
     """
 You are a process control validator.
 Given the current state:
@@ -26,14 +26,14 @@ Respond with "yes" or "no".
 )
 
 def call_validator(obs, condition_description):
-    prompt = validator_template.format_messages(obs=str(obs), condition_description=condition_description)
+    prompt = validator_x1emplate.format_messages(obs=str(obs), condition_description=condition_description)
     response = llm(prompt)
     return "yes" in response.content.lower()
 
-def validator_T(obs):
+def validator_x1(obs):
     return call_validator(obs, "Temperature T > 350 K")
 
-def validator_C(obs):
+def validator_x2(obs):
     return call_validator(obs, "Concentration of A (C_A) < 0.5 mol/L")
 
 # 2. Actionizer Role Template
@@ -46,7 +46,7 @@ Given the current observation:
 Condition triggered: {condition_label}
 
 Recommend an action by specifying:
-- control_variable: one of ["coolant_flow", "feed_rate"]
+- control_variable: one of ["u1", "u2"]
 - adjustment: positive or negative float value
 
 Respond in JSON:
@@ -65,10 +65,10 @@ def call_actionizer(obs, condition_label):
     response = llm(prompt)
     return parser.parse(response.content)
 
-def actionizer_T(obs):
+def actionizer_x1(obs):
     return call_actionizer(obs, "High temperature (T > 350 K)")
 
-def actionizer_C(obs):
+def actionizer_x2(obs):
     return call_actionizer(obs, "Low concentration (C_A < 0.5 mol/L)")
 
 # 3. Conditional Role: Combine and Check Constraints
@@ -78,7 +78,7 @@ You are a conflict resolver in a chemical plant.
 Given the proposed actions:
 {actions}
 
-Decide if there are conflicts between them (e.g., coolant and feed_rate affecting each other).
+Decide if there are conflicts between them (e.g., coolant and u2 affecting each other).
 Respond with:
 - adjustments: updated list of recommended changes in JSON form:
 [{{"control_variable": "...", "adjustment": float}}, ...]
