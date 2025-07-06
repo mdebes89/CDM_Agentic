@@ -33,7 +33,7 @@ def main():
 
     model = PPO("MlpPolicy", train_env, verbose=1)
     model.learn(total_timesteps=200_000, callback=eval_cb)
-    model.save("ppo_manager_cstr")
+    model.save("ppo_manager_tanks")
     
     obs = train_env.reset()
     
@@ -50,7 +50,7 @@ def test(num_steps: int = 100):
     print per-step perf, cost, manager reward, plus final totals."""
     # 1) Re-instantiate env and load model
     env   = HierarchicalManagerEnv()
-    model = PPO.load("ppo_manager_cstr")
+    model = PPO.load("ppo_manager_tanks")
 
     # 2) Reset
     obs, _ = env.reset()

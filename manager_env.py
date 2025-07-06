@@ -86,7 +86,7 @@ class HierarchicalManagerEnv(gym.Env):
         ], dtype=np.float32)
 
 
-        # 5) Step the CSTR
+        # 5) Step the four-tank plant
         next_obs, perf_reward, terminated, truncated, info = self.env.step(action)
         self.current_raw_obs = next_obs
         
