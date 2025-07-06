@@ -26,8 +26,8 @@ def make_cstr_env():
 
     # 4. Define the action space (single control: coolant temperature setpoint)
     a_space = {
-    "low":  np.array([-1.0, -1.0], dtype=np.float32),
-    "high": np.array([ 1.0,  1.0], dtype=np.float32),
+        "low":  np.array([-1.0, -1.0], dtype=np.float32),
+        "high": np.array([ 1.0,  1.0], dtype=np.float32),
     }
 
     # 5. Initial state [Ca, T, Ca_SP]

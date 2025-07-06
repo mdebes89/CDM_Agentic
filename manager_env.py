@@ -27,20 +27,10 @@ else:
 
 class HierarchicalManagerEnv(gym.Env):
     def __init__(self):
-        # 1) Underlying PC-Gym CSTR env
         self.env = make_cstr_env()
-
-        # 2) Grab a sample raw obs to build the flat space
-        raw_arr, _ = self.env.reset()
-        
-        # 3) Define SB3-compatible spaces
-        self.observation_space = gym.spaces.Box(
-            low=self.env.observation_space.low,
-            high=self.env.observation_space.high,
-            dtype=np.float32
-        )
-        self.action_space = gym.spaces.MultiBinary(4)
-
+        # directly reuse the CSTR env’s spaces:
+        self.observation_space = self.env.observation_space  # Box(shape=(3,),…)
+        self.action_space      = self.env.action_space       # Box(shape=(2,), low=[-1,-1], high=[1,1])
         # 4) Define control variable order for a_space of shape (2,)
         self.control_vars = ["coolant_flow", "feed_rate"]
 
@@ -56,10 +46,10 @@ class HierarchicalManagerEnv(gym.Env):
         ], dtype=np.float32)
 
     def reset(self, **kwargs):
-        # Reset underlying env, store raw, return flat
-        raw_obs, info = self.env.reset(**kwargs)
-        self.current_raw_obs = raw_obs
-        return self._flatten(raw_obs), info
+        # Reset underlying env, store raw
+        obs, info = self.env.reset(**kwargs)    # obs is ndarray
+        self.current_raw_obs = obs
+        return obs, info
 
     def step(self, manager_action):
         # 1) Use raw dict for logic
@@ -86,8 +76,7 @@ class HierarchicalManagerEnv(gym.Env):
         )
 
         # 4) Step the CSTR
-        next_raw, reward, terminated, truncated, info = self.env.step(action)
-        self.current_raw_obs = next_raw
+        next_obs, reward, terminated, truncated, info = self.env.step(action)
 
-        # 5) Return flat obs to SB3
-        return next_raw_arr, reward, terminated, truncated, info
+        self.current_raw_obs = next_obs
+        return next_obs, reward, terminated, truncated, info
