@@ -7,11 +7,9 @@ Created on Sun Jul  6 15:08:57 2025
 
 from manager_env import HierarchicalManagerEnv
 from stable_baselines3 import PPO
-from gymnasium.wrappers import FlattenObservation
 
 def main():
-    base_env = HierarchicalManagerEnv()
-    env = FlattenObservation(base_env)
+    env = HierarchicalManagerEnv()
     model = PPO("MlpPolicy", env, verbose=1)
     model.learn(total_timesteps=200_000)
     model.save("ppo_manager_cstr")
