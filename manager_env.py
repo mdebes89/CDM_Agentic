@@ -7,7 +7,7 @@ Created on Sun Jul  6 15:07:58 2025
 
 import numpy as np
 import gymnasium as gym
-from first_order_env import make_first_order_env
+from four_tank_env  import make_four_tank_env 
 from config import agentic, ROLE_COSTS
 
 # Conditional imports for executor logic
@@ -27,7 +27,7 @@ else:
 
 class HierarchicalManagerEnv(gym.Env):
     def __init__(self):
-        self.env = make_first_order_env()
+        self.env = make_four_tank_env()
         # directly reuse the FO env’s spaces:
         self.observation_space = self.env.observation_space  # Box(shape=(3,),…)
         self.action_space      = gym.spaces.MultiBinary(4)   # manager picks 4 flag

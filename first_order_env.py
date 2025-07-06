@@ -23,18 +23,17 @@ def make_first_order_env():
 
     # 3) Observation space: [x1, x2, SP_x1, SP_x2]
     o_space = {
-        "low":  np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-        "high": np.array([2.0, 2.0, 2.0, 2.0], dtype=np.float32),
+      "low":  np.array([0.0, 0.0], dtype=np.float32),
+      "high": np.array([2.0, 2.0], dtype=np.float32),
     }
 
     # 4) Action space: assume two continuous inputs u1, u2
     a_space = {
-        "low":  np.array([-1.0, -1.0], dtype=np.float32),
-        "high": np.array([ 1.0,  1.0], dtype=np.float32),
+        "low":  np.array([-1.0], dtype=np.float32),
+        "high": np.array([ 1.0], dtype=np.float32), 
     }
-
     # 5) Initial state
-    x0 = np.array([0.2, 0.5, SP["x1"][0], SP["x2"][0]], dtype=np.float32)
+    x0 = np.array([0.2, 0.5], dtype=np.float32)
 
     params = {
         "N":       nsteps,
