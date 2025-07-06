@@ -3,6 +3,13 @@
 Created on Sun Jul  6 15:08:57 2025
 
 @author: mdbs1
+
+The train_manager script (or notebook) is setting up and training an RL agent whose action space is which roles to turn on or off at each time step.
+
+Objective: maximize long-term plant performance (keeping tank levels on their set-points) minus the cumulative cost of engaging each computational role.
+
+Trade-off: engaging more roles usually gives better control proposals (higher perf_reward) but costs the manager more; engaging too few saves cost but risks poor plant behavior.
+
 """
 
 from manager_env import HierarchicalManagerEnv
@@ -15,7 +22,7 @@ from config import agentic
 
 def make_sb3_env():
     """Vectorized & monitored env for SB3/PPO."""
-    env = HierarchicalManagerEnv()
+    env = HierarchicalManagerEnv(debugging=True)
     return Monitor(env)
 
 

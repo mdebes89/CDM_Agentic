@@ -5,6 +5,12 @@ four_tank_env.py
 Creates a PC-Gym environment for a four-tank process
 with two manipulated variables (pump flows u1, u2).
 https://maximilianb2.github.io/pc-gym/#quick-start
+
+This module defines your underlying plant model:
+
+make_four_tank_env() builds a Gym-compatible four-tank process with two pumps and four interconnected water tanks.
+
+It handles the hydraulic dynamics, set-point profiles (SP), normalization (which you’ve since disabled), and exposes the raw observation and action spaces.
 """
 
 import numpy as np
@@ -53,5 +59,9 @@ def make_four_tank_env():
        "model":   "four_tank",
        "a_space": a_space,
        "x0":      x0,
+       "normalise_o": False,    # disable the automatic [-1,+1] scaling
     }
-    return pcgym.make_env(params)
+    env = pcgym.make_env(params)
+    # Force-disable normalization at the object level
+    env.normalise_o = False
+    return env

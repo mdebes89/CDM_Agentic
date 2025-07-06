@@ -3,6 +3,10 @@
 Created on Sun Jul  6 15:07:18 2025
 
 @author: mdbs1
+Same interface as executor.py, but with hand-coded (deterministic) validator and actionizer functions:
+
+Used as a baseline and control group or for initial debugging when agentic=False.
+
 """
 import numpy as np
 

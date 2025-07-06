@@ -3,6 +3,12 @@
 Created on Sun Jul  6 15:10:53 2025
 
 @author: mdbs1
+
+Holds all the “knobs” for your agentic setup:
+
+agentic and agentic_manager flags toggle between deterministic vs. learned executors and whether the manager can use conditional roles.
+
+ROLE_COSTS is a dict mapping each role name (e.g. "validator_x1", "aggregator") to a scalar cost that the manager pays whenever it engages that role.
 """
 
 ROLE_COSTS = {
@@ -24,3 +30,4 @@ ROLE_COSTS = {
 }
 
 agentic = False # config flag between deterministic or agentic
+agentic_manager = False

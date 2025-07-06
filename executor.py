@@ -3,6 +3,16 @@
 Created on Sun Jul  6 15:11:28 2025
 
 @author: mdbs1
+
+Defines your learned or agentic executors (used if agentic=True):
+
+validator_x1 / validator_x2 decide whether each actionizer should run given the raw state.
+
+actionizer_x1 / actionizer_x2 compute a candidate control signal ({"u1":…, "u2":…}) based on learned policies.
+
+conditional_role wraps an aggregate of proposals under certain conditions.
+
+aggregate_actions merges a list of dicts into one final set of control commands, resolving conflicts or averaging as you’ve designed.
 """
 
 from langchain.chat_models import ChatOpenAI
