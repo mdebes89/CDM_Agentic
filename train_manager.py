@@ -4,7 +4,7 @@ Created on Sun Jul  6 15:08:57 2025
 
 @author: mdbs1
 
-The train_manager script (or notebook) is setting up and training an RL agent whose action space is which roles to turn on or off at each time step.
+The train_manager script is setting up and training an RL agent whose action space is which roles to turn on or off at each time step.
 
 Objective: maximize long-term plant performance (keeping tank levels on their set-points) minus the cumulative cost of engaging each computational role.
 
@@ -22,7 +22,7 @@ from config import agentic
 
 def make_sb3_env():
     """Vectorized & monitored env for SB3/PPO."""
-    env = HierarchicalManagerEnv(debugging=True)
+    env = HierarchicalManagerEnv(debugging=False)
     return Monitor(env)
 
 
@@ -38,7 +38,14 @@ def main():
                            eval_freq=10_000, n_eval_episodes=20,
                            verbose=1)
 
-    model = PPO("MlpPolicy", train_env, verbose=1)
+    model = PPO(
+        "MlpPolicy",
+        train_env,
+        ent_coef=0.01,
+        learning_rate=3e-4,
+        batch_size=64,
+        verbose=1,
+    )
     model.learn(total_timesteps=200_000, callback=eval_cb)
     model.save("ppo_manager_tanks")
     

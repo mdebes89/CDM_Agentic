@@ -40,7 +40,8 @@ class HierarchicalManagerEnv(gym.Env):
         # after disabling normalise_o, grab the raw (un-scaled) space
         # observation_space_base is the Box([low…], [high…]) you defined as o_space
         self.observation_space = self.env.observation_space_base  
-        self.action_space      = gym.spaces.MultiBinary(4)   # manager picks 4 flag
+        # manager now picks 3 flags: validator_x1, validator_x2, conditional
+        self.action_space      = gym.spaces.MultiBinary(3)
         # 4) Define control variable order for a_space of shape (2,)
         self.control_vars = ["u1", "u2"]
 
@@ -58,14 +59,15 @@ class HierarchicalManagerEnv(gym.Env):
     def step(self, manager_action):
         # 1) Use  dict for logic
         raw = self.current_raw_obs
-        ma = np.asarray(manager_action)
-        flags = ma.flatten()[:4]   # now flags is a 1-D length-4 array
+        flags = [bool(manager_action[i]) for i in range(3)]
+        
         
         # 2) Track which roles actually ran
         engaged_roles = []
 
         # 3) Executors produce a dict of control changes
         proposed = []
+        
         # validator_x1
         if flags[0]:
             engaged_roles.append("validator_x1")
@@ -92,12 +94,8 @@ class HierarchicalManagerEnv(gym.Env):
             proposed.append({"u1": Kp*(sp1 - raw[0]),
                              "u2": 0.0})
 
-        # aggregator
-        if flags[3]:
-            engaged_roles.append("aggregator")
-            final_dict = aggregate_actions(proposed)
-        else:
-            final_dict = proposed[0] if proposed else {}
+        # Always aggregate all proposals by default (assumed management function)
+        final_dict = aggregate_actions(proposed)
            
         if self.debugging:    
             print("   proposed raw outputs:", proposed)
@@ -120,7 +118,7 @@ class HierarchicalManagerEnv(gym.Env):
         # 6) Compute and subtract the cost
         cost = sum(ROLE_COSTS[r] for r in engaged_roles)
         engagement_bonus = 0.1 * len(engaged_roles) # Bonus reward for engaging roles
-        manager_reward = perf_reward - cost + engagement_bonus
+        manager_reward = perf_reward# - cost + engagement_bonus
         
         if self.debugging:
            print(f"[DEBUG] perf_reward={perf_reward:.3f}, cost={cost:.3f}, manager_reward={manager_reward:.3f}")

@@ -24,9 +24,6 @@ ROLE_COSTS = {
     "validator_x2":   0, # 0.01,
     "actionizer_x2":  0, # 0.05,
 
-    # Optional: cost for your wrapper roles
-    "conditional":    0, # 0.02,
-    "aggregator":     0, # 0.03,
 }
 
 agentic = False # config flag between deterministic or agentic
