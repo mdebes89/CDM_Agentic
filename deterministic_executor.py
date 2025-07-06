@@ -6,18 +6,20 @@ Created on Sun Jul  6 15:07:18 2025
 """
 import numpy as np
 
-def validator_T(obs: np.ndarray) -> bool:
-    # T is the 2nd entry
-    return obs[1] > 350.0
+def validator_T(obs):
+    T, Ca_SP = obs[1], obs[2]
+    # if T rises 10 K above nominal SP‐temperature (derive SP from model)
+    return T > 330.0  
 
 def actionizer_T(obs: np.ndarray) -> dict:
     T = obs[1]
     delta = min(0.1 * (T - 350.0), 1.0)
     return {"coolant_flow": -delta}
 
-def validator_C(obs: np.ndarray) -> bool:
-    # Ca is the 1st entry
-    return obs[0] < 0.5
+def validator_C(obs):
+    Ca, Ca_SP = obs[0], obs[2]
+    # if concentration drops >5% below SP
+    return Ca < 0.95 * Ca_SP
 
 def actionizer_C(obs: np.ndarray) -> dict:
     C = obs[0]

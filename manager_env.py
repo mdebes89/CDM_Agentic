@@ -81,13 +81,13 @@ class HierarchicalManagerEnv(gym.Env):
 
         # 4) Flatten that dict to a 2-element array
         action = np.array(
-            [ final_dict.get(var, 0.0) for var in self.control_vars ],
-            dtype=np.float32
+          [ final_dict.get("coolant_flow", 0.0),
+            final_dict.get("feed_rate", 0.0) ],
+          dtype=np.float32
         )
 
         # 5) Step the CSTR
-        plant_u = np.array([action[0]], dtype=np.float32)
-        next_obs, perf_reward, terminated, truncated, info = self.env.step(plant_u)
+        next_obs, perf_reward, terminated, truncated, info = self.env.step(action)
         self.current_raw_obs = next_obs
         
         # 6) Compute and subtract the cost
