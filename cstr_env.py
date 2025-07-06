@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Spyder Editor
+cstr_env.py
 
-This is a temporary script file.
+Creates a PC-Gym environment for a continuously stirred-tank reactor (CSTR)
+with a single manipulated variable (coolant temperature set-point).
+https://maximilianb2.github.io/pc-gym/#quick-start
 """
 
 import numpy as np
@@ -24,23 +26,23 @@ def make_cstr_env():
         "high": np.array([1.0, 350.0, 1.0], dtype=np.float32),
     }
 
-    # 4. Define the action space (single control: coolant temperature setpoint)
+    # 4. Define the action space (single control: coolant temperature set-point)
     a_space = {
-        "low":  np.array([-1.0, -1.0], dtype=np.float32),
-        "high": np.array([ 1.0,  1.0], dtype=np.float32),
+        "low":  np.array([295.0], dtype=np.float32),
+        "high": np.array([302.0], dtype=np.float32),
     }
 
     # 5. Initial state [Ca, T, Ca_SP]
     x0 = np.array([0.8, 330.0, 0.8], dtype=np.float32)
 
     params = {
-        "N":          nsteps,
-        "tsim":       tsim,
-        "SP":         SP,
-        "o_space":    o_space,
-        "a_space":    a_space,
-        "x0":         x0,
-        "model":      "cstr",
+        "N":       nsteps,
+        "tsim":    tsim,
+        "SP":      SP,
+        "o_space": o_space,
+        "a_space": a_space,
+        "x0":      x0,
+        "model":   "cstr_ode",   # two‐input ODE‐based variant in quick-start
     }
 
     return pcgym.make_env(params)
