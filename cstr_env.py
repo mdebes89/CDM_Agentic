@@ -42,7 +42,7 @@ def make_cstr_env():
         "o_space": o_space,
         "a_space": a_space,
         "x0":      x0,
-        "model":   "cstr_ode",   # two‐input ODE‐based variant in quick-start
+        "model":   "cstr",   # two‐input ODE‐based variant in quick-start
     }
 
     return pcgym.make_env(params)

@@ -6,12 +6,12 @@ Created on Sun Jul  6 15:10:53 2025
 """
 
 ROLE_COSTS = {
-    "validator_T": 0.1,
-    "actionizer_T": 0.2,
-    "validator_C": 0.1,
-    "actionizer_C": 0.2,
-    "conditional": 0.2,
-    "aggregator": 0.3,
+    "validator_T": 0, # 0.01,
+    "actionizer_T": 0, #0.02,
+    "validator_C": 0, #0.01,
+    "actionizer_C": 0, # 0.02,
+    "conditional": 0, #0.02,
+    "aggregator": 0 #0.03,
 }
 
 agentic = False # config flag between deterministic or agentic

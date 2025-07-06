@@ -8,7 +8,7 @@ Created on Sun Jul  6 15:07:58 2025
 import numpy as np
 import gymnasium as gym
 from cstr_env import make_cstr_env
-from config import agentic
+from config import agentic, ROLE_COSTS
 
 # Conditional imports for executor logic
 if agentic:
@@ -47,29 +47,57 @@ class HierarchicalManagerEnv(gym.Env):
         # 1) Use  dict for logic
         raw = self.current_raw_obs
         flags = manager_action  # 4-length 0/1 array
+        
+        # 2) Track which roles actually ran
+        engaged_roles = []
 
-        # 2) Executors produce a dict of control changes
+        # 3) Executors produce a dict of control changes
         proposed = []
-        if flags[0] and validator_T(raw):
-            proposed.append(actionizer_T(raw))
-        if flags[1] and validator_C(raw):
-            proposed.append(actionizer_C(raw))
+        # validator_T
+        if flags[0]:
+            engaged_roles.append("validator_T")
+            if validator_T(raw):
+                engaged_roles.append("actionizer_T")
+                proposed.append(actionizer_T(raw))
+
+        # validator_C
+        if flags[1]:
+            engaged_roles.append("validator_C")
+            if validator_C(raw):
+                engaged_roles.append("actionizer_C")
+                proposed.append(actionizer_C(raw))
+
+        # conditional wrapper
         if flags[2]:
+            engaged_roles.append("conditional")
             proposed = [conditional_role(aggregate_actions(proposed))]
+
+        # aggregator
         if flags[3]:
+            engaged_roles.append("aggregator")
             final_dict = aggregate_actions(proposed)
         else:
             final_dict = proposed[0] if proposed else {}
 
-        # 3) Flatten that dict → a 2-element array
+        # 4) Flatten that dict to a 2-element array
         action = np.array(
             [ final_dict.get(var, 0.0) for var in self.control_vars ],
             dtype=np.float32
         )
 
-        # 4) Step the CSTR
+        # 5) Step the CSTR
         plant_u = np.array([action[0]], dtype=np.float32)
-        next_obs, reward, terminated, truncated, info = self.env.step(plant_u)
-
+        next_obs, perf_reward, terminated, truncated, info = self.env.step(plant_u)
         self.current_raw_obs = next_obs
-        return next_obs, reward, terminated, truncated, info
+        
+        # 6) Compute and subtract the cost
+        cost = sum(ROLE_COSTS[r] for r in engaged_roles)
+        manager_reward = perf_reward - cost
+
+        
+        # 7) Log for debugging/monitoring
+        info["perf_reward"]   = perf_reward
+        info["manager_cost"]  = cost
+        info["manager_reward"] = manager_reward
+        
+        return next_obs, manager_reward, terminated, truncated, info
