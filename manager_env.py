@@ -79,12 +79,12 @@ class HierarchicalManagerEnv(gym.Env):
         else:
             final_dict = proposed[0] if proposed else {}
 
-        # 4) Flatten that dict to a 2-element array
-        action = np.array(
-          [ final_dict.get("coolant_flow", 0.0),
-            final_dict.get("feed_rate", 0.0) ],
-          dtype=np.float32
-        )
+        # 4) Flatten into the two-element [coolant_flow, feed_rate] array
+        action = np.array([
+            final_dict.get("coolant_flow", 0.0),
+            final_dict.get("feed_rate",    0.0),
+        ], dtype=np.float32)
+
 
         # 5) Step the CSTR
         next_obs, perf_reward, terminated, truncated, info = self.env.step(action)

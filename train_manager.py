@@ -14,8 +14,9 @@ from config import agentic
 
 
 def make_sb3_env():
-    # GymCompatibilityV0 turns Gymnasium ↔️ Gym
-    return Monitor(HierarchicalManagerEnv())
+    """Vectorized & monitored env for SB3/PPO."""
+    env = HierarchicalManagerEnv()
+    return Monitor(env)
 
 
 def main():
