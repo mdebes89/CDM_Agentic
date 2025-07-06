@@ -30,20 +30,12 @@ class HierarchicalManagerEnv(gym.Env):
         self.env = make_cstr_env()
         # directly reuse the CSTR env’s spaces:
         self.observation_space = self.env.observation_space  # Box(shape=(3,),…)
-        self.action_space      = self.env.action_space       # Box(shape=(2,), low=[-1,-1], high=[1,1])
+        self.action_space      = gym.spaces.MultiBinary(4)   # manager picks 4 flag
         # 4) Define control variable order for a_space of shape (2,)
         self.control_vars = ["coolant_flow", "feed_rate"]
 
         # 5) Storage for raw obs
         self.current_raw_obs = None
-
-    def _flatten(self, raw_obs: dict) -> np.ndarray:
-        # Map the PC-Gym dict to a fixed vector [Ca, T, Ca_SP]
-        return np.array([
-            raw_obs["Ca"],
-            raw_obs["T"],
-            raw_obs["Ca_SP"]
-        ], dtype=np.float32)
 
     def reset(self, **kwargs):
         # Reset underlying env, store raw
@@ -52,7 +44,7 @@ class HierarchicalManagerEnv(gym.Env):
         return obs, info
 
     def step(self, manager_action):
-        # 1) Use raw dict for logic
+        # 1) Use  dict for logic
         raw = self.current_raw_obs
         flags = manager_action  # 4-length 0/1 array
 
@@ -76,7 +68,8 @@ class HierarchicalManagerEnv(gym.Env):
         )
 
         # 4) Step the CSTR
-        next_obs, reward, terminated, truncated, info = self.env.step(action)
+        plant_u = np.array([action[0]], dtype=np.float32)
+        next_obs, reward, terminated, truncated, info = self.env.step(plant_u)
 
         self.current_raw_obs = next_obs
         return next_obs, reward, terminated, truncated, info
