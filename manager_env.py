@@ -27,27 +27,28 @@ else:
 
 class HierarchicalManagerEnv(gym.Env):
     def __init__(self):
-        # underlying CSTR
+        # 1) Underlying PC-Gym CSTR env
         self.env = make_cstr_env()
 
-        # get a sample raw obs to build flat space
-        raw_obs, _ = self.env.reset()
-        flat_obs = self._flatten(raw_obs)
-
-        # set spaces
+        # 2) Grab a sample raw obs to build the flat space
+        raw_arr, _ = self.env.reset()
+        
+        # 3) Define SB3-compatible spaces
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=flat_obs.shape, dtype=np.float32
+            low=self.env.observation_space.low,
+            high=self.env.observation_space.high,
+            dtype=np.float32
         )
         self.action_space = gym.spaces.MultiBinary(4)
 
-        # ordering for actions
+        # 4) Define control variable order for a_space of shape (2,)
         self.control_vars = ["coolant_flow", "feed_rate"]
 
-        # storage
+        # 5) Storage for raw obs
         self.current_raw_obs = None
 
     def _flatten(self, raw_obs: dict) -> np.ndarray:
-        # same order as o_space: [Ca, T, Ca_SP]
+        # Map the PC-Gym dict to a fixed vector [Ca, T, Ca_SP]
         return np.array([
             raw_obs["Ca"],
             raw_obs["T"],
@@ -55,16 +56,17 @@ class HierarchicalManagerEnv(gym.Env):
         ], dtype=np.float32)
 
     def reset(self, **kwargs):
+        # Reset underlying env, store raw, return flat
         raw_obs, info = self.env.reset(**kwargs)
         self.current_raw_obs = raw_obs
         return self._flatten(raw_obs), info
 
     def step(self, manager_action):
-        # use raw obs for validators/actionizers
+        # 1) Use raw dict for logic
         raw = self.current_raw_obs
-        flags = manager_action  # array of 4 zeros/ones
+        flags = manager_action  # 4-length 0/1 array
 
-        # run reasoning roles
+        # 2) Executors produce a dict of control changes
         proposed = []
         if flags[0] and validator_T(raw):
             proposed.append(actionizer_T(raw))
@@ -77,16 +79,15 @@ class HierarchicalManagerEnv(gym.Env):
         else:
             final_dict = proposed[0] if proposed else {}
 
-        # dict → array for env action
+        # 3) Flatten that dict → a 2-element array
         action = np.array(
             [ final_dict.get(var, 0.0) for var in self.control_vars ],
             dtype=np.float32
         )
 
-        # step underlying CSTR
+        # 4) Step the CSTR
         next_raw, reward, terminated, truncated, info = self.env.step(action)
         self.current_raw_obs = next_raw
 
-        # flatten for SB3
-        next_flat = self._flatten(next_raw)
-        return next_flat, reward, terminated, truncated, info
+        # 5) Return flat obs to SB3
+        return next_raw_arr, reward, terminated, truncated, info
