@@ -29,7 +29,7 @@ class HierarchicalManagerEnv(gym.Env):
         self.env = make_cstr_env()
         obs, _ = self.env.reset()
         self.observation_space = self.env.observation_space
-        self.action_space = gym.spaces.Discrete(4)  # 4 binary flags for role execution
+        self.action_space = gym.spaces.MultiBinary(4) # 4 binary flags for role execution
         
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -38,7 +38,7 @@ class HierarchicalManagerEnv(gym.Env):
     
     def step(self, manager_action):
         obs = self.current_obs
-        flags = [(manager_action >> i) & 1 for i in range(4)]
+        flags = manager_action
     
         proposed = []
         if flags[0] and validator_T(obs):
