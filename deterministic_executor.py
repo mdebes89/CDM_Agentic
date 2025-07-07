@@ -13,21 +13,20 @@ import numpy as np
 def validator_x1(obs):
     """
     Trigger pump-1 agent if tank 3 deviates >5% from its setpoint.
-    obs = [h1, h2, h3, h4, h3_SP, h4_SP]
+    obs = [h1,h2,h3,h4,h1_SP,h2_SP,h3_SP,h4_SP]
     """
     h3, h3_SP = obs[2], obs[6]    # SP for h3 lives at obs[6]
     return abs(h3 - h3_SP) > 0.05 * h3_SP
 
 def actionizer_x1(obs: np.ndarray) -> dict:
     """
-    Proportional correction for pump 1:
-      Δv1 = 0.1 * (h3_SP - h3),  clipped to [-1.0, 1.0] (V)
-    Returns a delta‐voltage command u1.
+    Simple P-controller for pump 1:
+      u1 = clip(1.0 * (h3_SP - h3), 0.0, 1.0)
     """
     h3, h3_SP = obs[2], obs[6]
-    error = h3_SP - h3
-    delta = np.clip(0.1 * error, -1.0, 1.0)
-    return {"u1": delta}
+    # full voltage command ∈ [0,1]
+    u1 = np.clip(1.0 * (h3_SP - h3), 0.0, 1.0)
+    return {"u1": u1}
 
 def validator_x2(obs):
     """
@@ -38,13 +37,13 @@ def validator_x2(obs):
 
 def actionizer_x2(obs: np.ndarray) -> dict:
     """
-    Proportional correction for pump 2:
-      Δv2 = 0.1 * (h4_SP - h4),  clipped to [-1.0, 1.0] (V)
+    Simple P-controller for pump 2:
+      u2 = clip(1.0 * (h4_SP - h4), 0.0, 1.0)
     """
     h4, h4_SP = obs[3], obs[7]
-    error = h4_SP - h4
-    delta = np.clip(0.1 * error, -1.0, 1.0)
-    return {"u2": delta}
+    # full voltage command ∈ [0,1]
+    u2 = np.clip(1.0 * (h4_SP - h4), 0.0, 1.0)
+    return {"u2": u2}
 
 def conditional_role(actions):
     # if both pumps want to act in opposing directions, reduce one

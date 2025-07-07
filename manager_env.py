@@ -48,6 +48,7 @@ class HierarchicalManagerEnv(gym.Env):
         # 5) Storage for raw obs
         self.current_raw_obs = None
         self.current_step = 0
+        
 
     def reset(self, **kwargs):
         # Reset underlying env, store raw
