@@ -15,7 +15,7 @@ def validator_x1(obs):
     Trigger pump-1 agent if tank 3 deviates >5% from its setpoint.
     obs = [h1, h2, h3, h4, h3_SP, h4_SP]
     """
-    h3, h3_SP = obs[2], obs[4]
+    h3, h3_SP = obs[2], obs[6]    # SP for h3 lives at obs[6]
     return abs(h3 - h3_SP) > 0.05 * h3_SP
 
 def actionizer_x1(obs: np.ndarray) -> dict:
@@ -24,7 +24,7 @@ def actionizer_x1(obs: np.ndarray) -> dict:
       Δv1 = 0.1 * (h3_SP - h3),  clipped to [-1.0, 1.0] (V)
     Returns a delta‐voltage command u1.
     """
-    h3, h3_SP = obs[2], obs[4]
+    h3, h3_SP = obs[2], obs[6]
     error = h3_SP - h3
     delta = np.clip(0.1 * error, -1.0, 1.0)
     return {"u1": delta}
@@ -33,7 +33,7 @@ def validator_x2(obs):
     """
     Trigger pump-2 agent if tank 4 deviates >5% from its setpoint.
     """
-    h4, h4_SP = obs[3], obs[5]
+    h4, h4_SP = obs[3], obs[7]    # SP for h4 lives at obs[7]
     return abs(h4 - h4_SP) > 0.05 * h4_SP
 
 def actionizer_x2(obs: np.ndarray) -> dict:
@@ -41,7 +41,7 @@ def actionizer_x2(obs: np.ndarray) -> dict:
     Proportional correction for pump 2:
       Δv2 = 0.1 * (h4_SP - h4),  clipped to [-1.0, 1.0] (V)
     """
-    h4, h4_SP = obs[3], obs[5]
+    h4, h4_SP = obs[3], obs[7]
     error = h4_SP - h4
     delta = np.clip(0.1 * error, -1.0, 1.0)
     return {"u2": delta}
