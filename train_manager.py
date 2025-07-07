@@ -27,12 +27,18 @@ from config import agentic
 def make_sb3_env():
     """Vectorized & monitored env for SB3/PPO."""
     env = HierarchicalManagerEnv(debugging=False)
-    return Monitor(env)
-
+    # allow early resets so SB3 can reset on truncated episodes,
+    # and log perf_reward + manager_cost to the Monitor CSV/info.
+    return Monitor(
+        env,
+        allow_early_resets=True,
+        info_keywords=("perf_reward", "manager_cost"),
+    )
 
 def main():
-    train_env = DummyVecEnv([make_sb3_env])
-    eval_env  = DummyVecEnv([make_sb3_env])
+    n_envs = 4
+    train_env = DummyVecEnv([make_sb3_env for _ in range(n_envs)])
+    eval_env  = DummyVecEnv([make_sb3_env for _ in range(n_envs)])
     
     # Callback that stops once the threshold is reached:
     stop_cb = StopTrainingOnRewardThreshold(reward_threshold=0.9, verbose=1)
