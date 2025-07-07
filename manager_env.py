@@ -60,7 +60,13 @@ class HierarchicalManagerEnv(gym.Env):
     def step(self, manager_action):
         # 1) Use  dict for logic
         raw = self.current_raw_obs
-        flags = [bool(manager_action[i]) for i in range(3)]
+        
+        if not agentic:
+            # deterministic baseline: always engage both pump-1 and pump-2 controllers,
+            # never use the conditional wrapper
+            flags = [True, True, False]
+        else:
+            flags = [bool(manager_action[i]) for i in range(3)]
         
         
         # 2) Track which roles actually ran
