@@ -132,4 +132,5 @@ class HierarchicalManagerEnv(gym.Env):
         info["manager_cost"]  = cost
         info["manager_reward"] = manager_reward
         
+        
         return next_obs, manager_reward, terminated, truncated, info
