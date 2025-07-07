@@ -18,7 +18,7 @@ import pcgym
 
 def make_four_tank_env():
     nsteps = 100
-    tsim   = 25.0
+    tsim   = 25
     # Setpoint trajectories for each tank (constant here)
     # Must match the model’s state names ["h1","h2","h3","h4"]
     SP = {
@@ -59,9 +59,9 @@ def make_four_tank_env():
        "model":   "four_tank",
        "a_space": a_space,
        "x0":      x0,
-       "normalise_o": False,    # disable the automatic [-1,+1] scaling
+       "normalize_o": False,    # disable the automatic [-1,+1] scaling
     }
     env = pcgym.make_env(params)
     # Force-disable normalization at the object level
-    env.normalise_o = False
+    env.normalize_o = False
     return env

@@ -61,12 +61,7 @@ class HierarchicalManagerEnv(gym.Env):
         # 1) Use  dict for logic
         raw = self.current_raw_obs
         
-        if not agentic:
-            # deterministic baseline: always engage both pump-1 and pump-2 controllers,
-            # never use the conditional wrapper
-            flags = [True, True, False]
-        else:
-            flags = [bool(manager_action[i]) for i in range(3)]
+        flags = [bool(manager_action[i]) for i in range(3)]
         
         
         # 2) Track which roles actually ran
@@ -119,7 +114,7 @@ class HierarchicalManagerEnv(gym.Env):
         # 6) Compute and subtract the cost
         cost = sum(ROLE_COSTS[r] for r in engaged_roles)
         engagement_bonus = 0.1 * len(engaged_roles) # Bonus reward for engaging roles
-        manager_reward = perf_reward# - cost + engagement_bonus
+        manager_reward = perf_reward# - cost + engagement_bonus # By design we exlcude cost and engagement to reduce complexity
         
         if self.debugging:
            print(f"[DEBUG] perf_reward={perf_reward:.3f}, cost={cost:.3f}, manager_reward={manager_reward:.3f}")
