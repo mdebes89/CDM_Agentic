@@ -4,7 +4,7 @@ four_tank_env.py
 
 Creates a PC-Gym environment for a four-tank process
 with two manipulated variables (pump flows u1, u2).
-https://maximilianb2.github.io/pc-gym/#quick-start
+https://maximilianb2.github.io/pc-gym/
 
 This module defines your underlying plant model:
 
