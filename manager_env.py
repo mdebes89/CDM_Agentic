@@ -83,17 +83,11 @@ class HierarchicalManagerEnv(gym.Env):
                 engaged_roles.append("actionizer_x2")
                 proposed.append(actionizer_x2(raw))
 
-        # conditional wrapper
+        # conditional wrapper - Only necessary if Agentic conditional wrapper is needed
         if agentic_manager and flags[2]:
             engaged_roles.append("conditional")
             proposed = [conditional_role(aggregate_actions(proposed))]
             
-        # if nobody proposed anything, fall back to a simple P‐controller on tank1
-        if not proposed:
-            sp1 = self.env.SP["h1"][self.current_step]
-            Kp  = 1.0  # choose an appropriate proportional gain
-            proposed.append({"u1": Kp*(sp1 - raw[0]),
-                             "u2": 0.0})
 
         # Always aggregate all proposals by default (assumed management function)
         final_dict = aggregate_actions(proposed)

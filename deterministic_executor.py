@@ -9,40 +9,41 @@ Used as a baseline and control group or for initial debugging when agentic=False
 
 """
 import numpy as np
+# import inspect
 
 def validator_x1(obs):
     """
     Trigger pump-1 agent if tank 3 deviates >5% from its setpoint.
     obs = [h1,h2,h3,h4,h1_SP,h2_SP,h3_SP,h4_SP]
     """
-    h3, h3_SP = obs[2], obs[6]    # SP for h3 lives at obs[6]
-    return abs(h3 - h3_SP) > 0.05 * h3_SP
+    h1, sp1 = obs[0], obs[4]
+    return abs(h1 - sp1) > 0.05 * sp1
 
 def actionizer_x1(obs: np.ndarray) -> dict:
     """
     Simple P-controller for pump 1:
       u1 = clip(1.0 * (h3_SP - h3), 0.0, 1.0)
-    """
-    h3, h3_SP = obs[2], obs[6]
-    # full voltage command ∈ [0,1]
-    u1 = np.clip(1.0 * (h3_SP - h3), 0.0, 1.0)
+    """   
+    h1, sp1 = obs[0], obs[4]
+    error = sp1 - h1
+    u1    = np.clip(1.0 * error, 0.0, 1.0)
     return {"u1": u1}
 
 def validator_x2(obs):
     """
     Trigger pump-2 agent if tank 4 deviates >5% from its setpoint.
     """
-    h4, h4_SP = obs[3], obs[7]    # SP for h4 lives at obs[7]
-    return abs(h4 - h4_SP) > 0.05 * h4_SP
+    h2, sp2 = obs[1], obs[5]
+    return abs(h2 - sp2) > 0.05 * sp2
 
 def actionizer_x2(obs: np.ndarray) -> dict:
     """
     Simple P-controller for pump 2:
       u2 = clip(1.0 * (h4_SP - h4), 0.0, 1.0)
     """
-    h4, h4_SP = obs[3], obs[7]
-    # full voltage command ∈ [0,1]
-    u2 = np.clip(1.0 * (h4_SP - h4), 0.0, 1.0)
+    h2, sp2 = obs[1], obs[5]
+    error = sp2 - h2
+    u2    = np.clip(1.0 * error, 0.0, 1.0)
     return {"u2": u2}
 
 def conditional_role(actions):
