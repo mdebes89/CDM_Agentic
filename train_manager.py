@@ -41,7 +41,7 @@ def main():
     eval_env  = DummyVecEnv([make_sb3_env for _ in range(n_envs)])
     
     # Callback that stops once the threshold is reached:
-    stop_cb = StopTrainingOnRewardThreshold(reward_threshold=0.9, verbose=1)
+    stop_cb = StopTrainingOnRewardThreshold(reward_threshold=500, verbose=1)
 
     # Evaluate every 10000 steps:
     eval_cb = EvalCallback(eval_env, callback_after_eval=stop_cb,

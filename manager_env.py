@@ -51,15 +51,33 @@ class HierarchicalManagerEnv(gym.Env):
         
 
     def reset(self, **kwargs):
+        from four_tank_env import make_four_tank_env, o_space, SP
+        # sample new initial h1–h4 each reset
+        h_low, h_high = o_space["low"][:4], o_space["high"][:4]
+        initial_h     = np.random.uniform(h_low, h_high).astype(np.float32)
+        initial_sp    = np.array([
+            SP["h1"][0], SP["h2"][0], SP["h3"][0], SP["h4"][0]
+            ], dtype=np.float32)
+        x0 = np.concatenate([initial_h, initial_sp])
+
+        # pass x0 into your four‐tank factory
+        self.env = make_four_tank_env(x0=x0)
         # Reset underlying env, store raw
         obs, info = self.env.reset(**kwargs)    # obs is ndarray
+        #print("raw obs range:", obs[:4].min(), obs[:4].max())
         self.current_raw_obs = obs
         self.current_step = 0
         return obs, info
 
     def step(self, manager_action):
-        # 1) Use  dict for logic
-        raw = self.current_raw_obs
+        # 1) Undo any [-1,+1] normalization so raw is in engineering units
+        obs_norm = self.current_raw_obs
+        low  = self.observation_space.low
+        high = self.observation_space.high
+        # if x_norm = 2*(x - low)/(high-low) - 1, then
+        # x = ((x_norm + 1)/2)*(high - low) + low
+        raw = ((obs_norm + 1.0) * 0.5) * (high - low) + low
+        #print(f"[SANITY] unnormalized h1–h4 = {raw[:4]}")
         
         flags = [bool(manager_action[i]) for i in range(3)]
         
@@ -94,8 +112,8 @@ class HierarchicalManagerEnv(gym.Env):
         final_dict = aggregate_actions(proposed)
            
         if self.debugging:    
-            print("   proposed raw outputs:", proposed)
-            print("   final_dict before flatten:", final_dict)
+            print(f"[SANITY] proposals = {proposed}")
+            print(f"[SANITY] merged final_dict = {final_dict}")
 
         # 4) Flatten into the two-element [u1, u2] array
         action = np.array([
@@ -111,10 +129,20 @@ class HierarchicalManagerEnv(gym.Env):
             print(f"[DEBUG] next_obs[:4]={next_obs[:4]}, sp={self.env.SP['h1'][self.current_step]}")
         self.current_raw_obs = next_obs
         
-        # 6) Compute and subtract the cost
-        cost = sum(ROLE_COSTS[r] for r in engaged_roles)
-        engagement_bonus = 0.1 * len(engaged_roles) # Bonus reward for engaging roles
-        manager_reward = perf_reward# - cost + engagement_bonus # By design we exlcude cost and engagement to reduce complexity
+        # 6) Compute your new, shaped tracking reward in [0,1]
+        # raw = your un-normalized state vector from earlier in this function
+        h3, sp3 = raw[2], raw[4]
+        h4, sp4 = raw[3], raw[5]
+        norm_err3 = abs(h3 - sp3) / sp3
+        norm_err4 = abs(h4 - sp4) / sp4
+        shaped    = 1.0 - 0.5 * (norm_err3 + norm_err4)  # ∈ [0,1]
+    
+        # 7) (Optional) subtract any compute cost or add bonus
+        cost            = sum(ROLE_COSTS[r] for r in engaged_roles)
+        engagement_bonus = 0.1 * len(engaged_roles)
+    
+        # 8) Final manager reward
+        manager_reward = shaped  # or: shaped - cost + engagement_bonus # By design we exlcude cost and engagement to reduce complexity
         
         if self.debugging:
            print(f"[DEBUG] perf_reward={perf_reward:.3f}, cost={cost:.3f}, manager_reward={manager_reward:.3f}")

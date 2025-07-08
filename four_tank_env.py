@@ -16,17 +16,26 @@ It handles the hydraulic dynamics, set-point profiles (SP), normalization (which
 import numpy as np
 import pcgym
 
-def make_four_tank_env():
-    nsteps = 100
-    tsim   = 25
+nsteps = 100
+tsim   = 25
+
+# 1) Define SP and o_space at module‐level
+SP = {
+     "h1": np.ones(nsteps) * 1.0,
+     "h2": np.ones(nsteps) * 0.8,
+     "h3": np.ones(nsteps) * 0.5,
+     "h4": np.ones(nsteps) * 0.3,
+   }
+o_space = {
+    "low":  np.concatenate([np.zeros(4), np.array([1.0,0.8,0.5,0.3])]),
+    "high": np.concatenate([np.ones(4)*2.0, np.array([2.0,1.8,1.5,1.3])]),
+}
+
+def make_four_tank_env(x0=None, nsteps=nsteps, tsim=tsim):
+
     # Setpoint trajectories for each tank (constant here)
     # Must match the model’s state names ["h1","h2","h3","h4"]
-    SP = {
-        "h1": np.ones(nsteps) * 1.0,
-        "h2": np.ones(nsteps) * 0.8,
-        "h3": np.ones(nsteps) * 0.5,
-        "h4": np.ones(nsteps) * 0.3,
-    }
+
     # States = [h1, h2, h3, h4]
     # Setpoints = [SP1, SP2, SP3, SP4]
     # → total obs-vector length = 8
@@ -35,21 +44,24 @@ def make_four_tank_env():
     sp_low     = np.array([1.0, 0.8, 0.5, 0.3], dtype=np.float32)  # min SP
     sp_high    = sp_low + 1.0  # e.g. [2.0,1.8,1.5,1.3] to avoid zero-range                                   # constant SP trajectories
 
-    o_space = {
-        "low":  np.concatenate([state_low,  sp_low]),
-        "high": np.concatenate([state_high, sp_high]),
-    }
     # Two pumps: u1 and u2
     a_space = {
         "low":  np.array([0.0, 0.0], dtype=np.float32),
         "high": np.array([1.0, 1.0], dtype=np.float32),
     }
     
-    # Initial state: [h1, h2, h3, h4] + [SP1(0), SP2(0), SP3(0), SP4(0)]
-    x0 = np.concatenate([
-        np.array([0.5, 0.5, 0.5, 0.5], dtype=np.float32),
-        np.array([SP["h1"][0], SP["h2"][0], SP["h3"][0], SP["h4"][0]], dtype=np.float32),
-    ])
+    # randomize initial tank heights each episode between their o_space bounds
+    # o_space.low/high for the first 4 entries are the h1..h4 bounds
+    h_low, h_high = o_space["low"][:4], o_space["high"][:4]
+    initial_h = np.random.uniform(low=h_low, high=h_high).astype(np.float32)
+    # keep the set-points fixed
+    initial_sp = np.array([
+        SP["h1"][0],
+        SP["h2"][0],
+        SP["h3"][0],
+        SP["h4"][0],
+    ], dtype=np.float32)
+    x0 = np.concatenate([initial_h, initial_sp])
 
     params = {
        "N":       nsteps,
