@@ -41,7 +41,7 @@ def main():
     eval_env  = DummyVecEnv([make_sb3_env for _ in range(n_envs)])
     
     # Callback that stops once the threshold is reached:
-    stop_cb = StopTrainingOnRewardThreshold(reward_threshold=500, verbose=1)
+    stop_cb = StopTrainingOnRewardThreshold(reward_threshold=0, verbose=1)
 
     # Evaluate every 10000 steps:
     eval_cb = EvalCallback(eval_env, callback_after_eval=stop_cb,
@@ -51,23 +51,23 @@ def main():
     model = PPO(
         "MlpPolicy",
         train_env,
-        ent_coef=0.01,
+        ent_coef=1e-3,
         learning_rate=3e-4,
         batch_size=64,
         verbose=1,
     )
-    model.learn(total_timesteps=200_000, callback=eval_cb)
+    model.learn(total_timesteps=5_000_000, callback=eval_cb)
     model.save("ppo_manager_tanks")
     
     obs = train_env.reset()
     
     for _ in range(50):
-        action, _ = model.predict(obs)              # predict still returns (action, state)
-        obs, rewards, dones, infos = train_env.step(action)
-    
-        # If that single env in the VecEnv signals done, reset (no unpacking)
-        if dones[0]:
-            obs = train_env.reset()
+        actions, _ = model.predict(obs)
+        obs, rewards, dones, infos = train_env.step(actions)
+        # if *any* sub-env finished, reset those only
+        for i, done in enumerate(dones):
+            if done:
+                obs[i], _ = train_env.envs[i].reset()
             
 def test(num_steps: int = 100):
     """Run a fixed-length rollout with the trained manager and

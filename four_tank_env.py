@@ -31,7 +31,7 @@ o_space = {
     "high": np.concatenate([np.ones(4)*2.0, np.array([2.0,1.8,1.5,1.3])]),
 }
 
-def make_four_tank_env(x0=None, nsteps=nsteps, tsim=tsim):
+def make_four_tank_env(x0=None, nsteps=nsteps, tsim=tsim, force_init=False):
 
     # Setpoint trajectories for each tank (constant here)
     # Must match the model’s state names ["h1","h2","h3","h4"]

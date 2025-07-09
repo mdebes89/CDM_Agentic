@@ -70,40 +70,30 @@ class HierarchicalManagerEnv(gym.Env):
         return obs, info
 
     def step(self, manager_action):
-        # 1) Undo any [-1,+1] normalization so raw is in engineering units
-        obs_norm = self.current_raw_obs
-        low  = self.observation_space.low
-        high = self.observation_space.high
-        # if x_norm = 2*(x - low)/(high-low) - 1, then
-        # x = ((x_norm + 1)/2)*(high - low) + low
-        raw = ((obs_norm + 1.0) * 0.5) * (high - low) + low
+
+        raw = self.current_raw_obs 
         #print(f"[SANITY] unnormalized h1–h4 = {raw[:4]}")
         
-        flags = [bool(manager_action[i]) for i in range(3)]
-        
-        
+        flags = [bool(manager_action[i]) for i in range(3)]        
         # 2) Track which roles actually ran
         engaged_roles = []
-
         # 3) Executors produce a dict of control changes
         proposed = []
         
-        # validator_x1
-        if flags[0]:
-            engaged_roles.append("validator_x1")
-            if validator_x1(raw):
-                engaged_roles.append("actionizer_x1")
-                proposed.append(actionizer_x1(raw))
+        # Pump-1
+        engaged_roles.append("validator_x1")
+        if validator_x1(raw) and flags[0]:
+            engaged_roles.append("actionizer_x1")
+            proposed.append(actionizer_x1(raw))
 
-        # validator_x2
-        if flags[1]:
-            engaged_roles.append("validator_x2")
-            if validator_x2(raw):
-                engaged_roles.append("actionizer_x2")
-                proposed.append(actionizer_x2(raw))
+        # Pump-2
+        engaged_roles.append("validator_x2")
+        if validator_x2(raw) and flags[1]:
+            engaged_roles.append("actionizer_x2")
+            proposed.append(actionizer_x2(raw))
 
-        # conditional wrapper - Only necessary if Agentic conditional wrapper is needed
-        if agentic_manager and flags[2]:
+        # Conditional conflict resolution
+        if agentic_manager and flags[2] and len(proposed) > 1:
             engaged_roles.append("conditional")
             proposed = [conditional_role(aggregate_actions(proposed))]
             
@@ -125,32 +115,27 @@ class HierarchicalManagerEnv(gym.Env):
             print(f"[DEBUG] step={self.current_step}, engaged_roles={engaged_roles}, action={action}")
         # 5) Step the four-tank plant
         next_obs, perf_reward, terminated, truncated, info = self.env.step(action)
+        
         if self.debugging:
             print(f"[DEBUG] next_obs[:4]={next_obs[:4]}, sp={self.env.SP['h1'][self.current_step]}")
+            
         self.current_raw_obs = next_obs
         
-        # 6) Compute your new, shaped tracking reward in [0,1]
-        # raw = your un-normalized state vector from earlier in this function
-        h3, sp3 = raw[2], raw[4]
-        h4, sp4 = raw[3], raw[5]
-        norm_err3 = abs(h3 - sp3) / sp3
-        norm_err4 = abs(h4 - sp4) / sp4
-        shaped    = 1.0 - 0.5 * (norm_err3 + norm_err4)  # ∈ [0,1]
     
-        # 7) (Optional) subtract any compute cost or add bonus
+        # 6) (Optional) subtract any compute cost or add bonus
         cost            = sum(ROLE_COSTS[r] for r in engaged_roles)
         engagement_bonus = 0.1 * len(engaged_roles)
     
-        # 8) Final manager reward
-        manager_reward = shaped  # or: shaped - cost + engagement_bonus # By design we exlcude cost and engagement to reduce complexity
+        # 7) Final manager reward
+        manager_reward = perf_reward  # or: shaped - cost + engagement_bonus # By design we exlcude cost and engagement to reduce complexity
         
         if self.debugging:
            print(f"[DEBUG] perf_reward={perf_reward:.3f}, cost={cost:.3f}, manager_reward={manager_reward:.3f}")
 
-        # 7) Advance control clock
+        # 8) Advance control clock
         self.current_step += 1
         
-        # 8) Log for debugging/monitoring
+        # 9) Log for monitoring
         info["perf_reward"]   = perf_reward
         info["manager_cost"]  = cost
         info["manager_reward"] = manager_reward
