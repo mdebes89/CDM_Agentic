@@ -25,6 +25,3 @@ ROLE_COSTS = {
     "actionizer_x2":  0, # 0.05,
 
 }
-
-agentic = False # config flag between deterministic or agentic
-agentic_manager = False

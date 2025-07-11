@@ -4,7 +4,7 @@ Created on Sun Jul  6 15:08:57 2025
 
 @author: mdbs1
 
-The train_manager script is setting up and training an RL agent whose action space is which roles to turn on or off at each time step.
+The train_manager script is setting up a manager agent whose action space is which roles to turn on or off at each time step.
 
 Objective: maximize long-term plant performance (keeping tank levels on their set-points) minus the cumulative cost of engaging each computational role.
 
@@ -16,99 +16,54 @@ Typical tank heights span 0.2–0.6 m, so a 5% band (≈0.01–0.03 m) is a reas
 
 """
 
-from manager_env import HierarchicalManagerEnv
-from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback
-from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
-from config import agentic
+from langchain.chat_models import ChatOpenAI
+from langchain.agents import initialize_agent, AgentType
+from tools.four_tank_tools import obs_tool, act_tool
 
+# 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
+llm = ChatOpenAI(model="gpt-4", temperature=0)
 
-def make_sb3_env():
-    """Vectorized & monitored env for SB3/PPO."""
-    env = HierarchicalManagerEnv(debugging=False)
-    # allow early resets so SB3 can reset on truncated episodes,
-    # and log perf_reward + manager_cost to the Monitor CSV/info.
-    return Monitor(
-        env,
-        allow_early_resets=True,
-        info_keywords=("perf_reward", "manager_cost"),
-    )
+# 2) Create the agent with your tools
+manager_agent = initialize_agent(
+    tools=[obs_tool, act_tool],
+    llm=llm,
+    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    verbose=True,
+    handle_parsing_errors=True,
+)
 
-def main():
-    n_envs = 4
-    train_env = DummyVecEnv([make_sb3_env for _ in range(n_envs)])
-    eval_env  = DummyVecEnv([make_sb3_env for _ in range(n_envs)])
-    
-    # Callback that stops once the threshold is reached:
-    stop_cb = StopTrainingOnRewardThreshold(reward_threshold=0, verbose=1)
+def parse_actions(text: str) -> tuple[float, float]:
+    # e.g. expect JSON: {"a1": 5.2, "a2": 3.1}
+    import json
+    data = json.loads(text)
+    return data["a1"], data["a2"]
 
-    # Evaluate every 10000 steps:
-    eval_cb = EvalCallback(eval_env, callback_after_eval=stop_cb,
-                           eval_freq=10_000, n_eval_episodes=20,
-                           verbose=1)
-
-    model = PPO(
-        "MlpPolicy",
-        train_env,
-        ent_coef=1e-3,
-        learning_rate=3e-4,
-        batch_size=64,
-        verbose=1,
-    )
-    model.learn(total_timesteps=5_000_000, callback=eval_cb)
-    model.save("ppo_manager_tanks")
-    
-    obs = train_env.reset()
-    
-    for _ in range(50):
-        actions, _ = model.predict(obs)
-        obs, rewards, dones, infos = train_env.step(actions)
-        # if *any* sub-env finished, reset those only
-        for i, done in enumerate(dones):
-            if done:
-                obs[i], _ = train_env.envs[i].reset()
-            
-def test(num_steps: int = 100):
-    """Run a fixed-length rollout with the trained manager and
-    print per-step perf, cost, manager reward, plus final totals."""
-    # 1) Re-instantiate env and load model
-    env   = HierarchicalManagerEnv()
-    model = PPO.load("ppo_manager_tanks")
-
-    # 2) Reset
-    obs, _ = env.reset()
-    perf_list, cost_list, mgr_list = [], [], []
-
-    # 3) Rollout loop
-    for i in range(num_steps):
-        action, _ = model.predict(obs, deterministic=True)
-        obs, mgr_reward, terminated, truncated, info = env.step(action)
-
-        perf = info["perf_reward"]
-        cost = info["manager_cost"]
-
-        perf_list.append(perf)
-        cost_list.append(cost)
-        mgr_list.append(mgr_reward)
-
-        # print per-step metrics
-        print(f"Step {i+1:3d}: perf={perf: .4f}, cost={cost: .4f}, manager={mgr_reward: .4f}")
-
-        if terminated or truncated:
-            obs, _ = env.reset()
-
-    # 4) Summary totals
-    test_type = "Pre-configured Agents"
-    if agentic:
-        test_type = "LLM Agents"    
-    
-    print(f"\nFinal totals using {test_type} over", num_steps, "steps:")
-    print(f"  Total perf_reward    = {sum(perf_list): .4f}")
-    print(f"  Total cost           = {sum(cost_list): .4f}")
-    print(f"  Total manager_reward = {sum(mgr_list): .4f}")            
+def train_episode(env, max_steps=200):
+    manager_agent.memory.clear()
+    total_reward = 0
+    for _ in range(max_steps):
+        # a) Read the latest observation
+        obs = manager_agent.run("read_observation")
+        # b) Build prompt with obs + cumulative reward
+        prompt = (
+            f"Observation: {obs['h']}\n"
+            f"Reward so far: {env.current_reward()}\n"
+            "Provide next action as JSON: {\"a1\": <0–10>, \"a2\": <0–10>}."
+        )
+        # c) Ask the agent for its action
+        response = manager_agent.run(prompt)
+        a1, a2 = parse_actions(response)
+        # d) Apply that action in the env
+        manager_agent.run(f"apply_action {a1} {a2}")
+        total_reward = env.current_reward()
+        if env.done:
+            break
+    return total_reward
 
 if __name__ == "__main__":
-    main()
-    print("\n=== TEST ROLLOUT ===")
-    test(100)
+    import gym
+    from pc_gym.env import FourTankEnv
+
+    env = gym.make("FourTank-v0")
+    reward = train_episode(env)
+    print(f"Episode complete; total reward = {reward}")

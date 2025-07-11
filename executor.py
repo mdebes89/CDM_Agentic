@@ -2,97 +2,107 @@
 """
 Created on Sun Jul  6 15:11:28 2025
 
-@author: mdbs1
+Updated for Four-Tank Environment Control using Agentic Roles
 
-Defines your learned or agentic executors (used if agentic=True):
+- Observation: [h1, h2, h3, h4, h3_SP, h4_SP]
+- Actions: two continuous valve settings in [0,10]
+- Deadband: ±5% of setpoint (~0.01–0.03 m)
 
-validator_x1 / validator_x2 decide whether each actionizer should run given the raw state.
-
-actionizer_x1 / actionizer_x2 compute a candidate control signal ({"u1":…, "u2":…}) based on learned policies.
-
-conditional_role wraps an aggregate of proposals under certain conditions.
-
-aggregate_actions merges a list of dicts into one final set of control commands, resolving conflicts or averaging as you’ve designed.
+This file defines:
+1. Validator roles that check whether each tank's error is outside the deadband.
+2. Actionizer roles that propose control adjustments for each valve.
+3. Conditional role to resolve conflicting proposals.
+4. Aggregator role to merge candidate adjustments into final actions.
 """
 
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
+import math
 
-llm = ChatOpenAI(model="gpt-4", temperature=0.0)
+# Instantiate a deterministic LLM for control decisions\llm = ChatOpenAI(model="gpt-4", temperature=0.0)
 
-# 1. Validator Role Template
-validator_x1emplate = ChatPromptTemplate.from_template(
-    """
-You are a process control validator.
-Given the current state:
-{obs}
-
-Determine whether the following condition is true:
-"{condition_description}"
-
-Respond with "yes" or "no".
-"""
-)
-
-def call_validator(obs, condition_description):
-    prompt = validator_x1emplate.format_messages(obs=str(obs), condition_description=condition_description)
-    response = llm(prompt)
-    return "yes" in response.content.lower()
-
-def validator_x1(obs):
-    return call_validator(obs, "Temperature T > 350 K")
-
-def validator_x2(obs):
-    return call_validator(obs, "Concentration of A (C_A) < 0.5 mol/L")
-
-# 2. Actionizer Role Template
-action_template = ChatPromptTemplate.from_template(
-    """
-You are a chemical process controller.
-Given the current observation:
-{obs}
-
-Condition triggered: {condition_label}
-
-Recommend an action by specifying:
-- control_variable: one of ["u1", "u2"]
-- adjustment: positive or negative float value
-
-Respond in JSON:
-{{"control_variable": "...", "adjustment": float}}
-"""
-)
-
+# Common parser schema
 action_output_schema = [
-    ResponseSchema(name="control_variable", description="Name of control variable to adjust"),
-    ResponseSchema(name="adjustment", description="Numeric adjustment to apply")
+    ResponseSchema(name="control_variable", description="Valve index: u1 or u2"),
+    ResponseSchema(name="adjustment", description="Float adjustment to apply to valve setting")
 ]
 parser = StructuredOutputParser.from_response_schemas(action_output_schema)
 
-def call_actionizer(obs, condition_label):
-    prompt = action_template.format_messages(obs=str(obs), condition_label=condition_label)
+# 1. Validator Role Templates
+validator_template = ChatPromptTemplate.from_template(
+    '''
+You are a validator for the Four-Tank system.
+Given the current state:
+{obs}
+
+Check if the error for tank {tank} i.e. |h{index} - h{index}_SP| exceeds the deadband ({deadband:.3f} m).
+Respond with "yes" or "no".
+'''  
+)
+
+def call_validator(obs, index, deadband=0.03):
+    prompt = validator_template.format_messages(
+        obs=str(obs), tank=f"h{index}", index=str(index), deadband=deadband
+    )
+    response = llm(prompt)
+    return "yes" in response.content.lower()
+
+# Two validators: for tank 3 and tank 4
+
+def validator_h3(obs):
+    return call_validator(obs, index=3)
+
+def validator_h4(obs):
+    return call_validator(obs, index=4)
+
+# 2. Actionizer Role Templates
+action_template = ChatPromptTemplate.from_template(
+    '''
+You are an actionizer for the Four-Tank system.
+Given the current state:
+{obs}
+
+Error for tank {tank}: {error:.3f} m (h{index} - h{index}_SP).
+Recommend an adjustment for valve {valve} by specifying:
+- control_variable: one of ["u1", "u2"]
+- adjustment: a float (positive to increase flow, negative to decrease)
+
+Respond in JSON: {{"control_variable": "<u1|u2>", "adjustment": <float>}}
+'''  
+)
+
+def call_actionizer(obs, index):
+    # Compute error
+    heights = obs[:4]
+    setpoints = obs[4:]
+    err = heights[index-1] - setpoints[index-3]
+    valve = f"u{index-2}"  # map tank3->u1, tank4->u2
+    prompt = action_template.format_messages(
+        obs=str(obs), tank=f"h{index}", index=str(index), error=err, valve=valve
+    )
     response = llm(prompt)
     return parser.parse(response.content)
 
-def actionizer_x1(obs):
-    return call_actionizer(obs, "High temperature (T > 350 K)")
+# Two actionizers: for h3->u1 and h4->u2
 
-def actionizer_x2(obs):
-    return call_actionizer(obs, "Low concentration (C_A < 0.5 mol/L)")
+def actionizer_h3(obs):
+    return call_actionizer(obs, index=3)
 
-# 3. Conditional Role: Combine and Check Constraints
+def actionizer_h4(obs):
+    return call_actionizer(obs, index=4)
+
+# 3. Conditional Role: Resolve Conflicts or Combine
 conditional_template = ChatPromptTemplate.from_template(
-    """
-You are a conflict resolver in a chemical plant.
-Given the proposed actions:
+    '''
+You are a conflict resolver for the Four-Tank system.
+Given the proposed adjustments:
 {actions}
 
-Decide if there are conflicts between them (e.g., coolant and u2 affecting each other).
-Respond with:
-- adjustments: updated list of recommended changes in JSON form:
-[{{"control_variable": "...", "adjustment": float}}, ...]
-"""
+If any valve appears in multiple proposals, average their adjustments.
+Respond in JSON list of adjustments:
+[{"control_variable": "u1", "adjustment": float}, ...]
+'''  
 )
 
 def conditional_role(actions):
@@ -100,19 +110,22 @@ def conditional_role(actions):
     response = llm(prompt)
     return parser.parse(response.content)
 
-# 4. Aggregator Role: Finalize Action
+# 4. Aggregator Role: Final Actions
 aggregator_template = ChatPromptTemplate.from_template(
-    """
-You are an aggregator agent.
-Given the following candidate control actions:
+    '''
+You are the final aggregator for the Four-Tank control.
+Given candidate adjustments:
 {candidates}
 
-Decide the best single action to apply next. Output format:
-{{"control_variable": "...", "adjustment": float}}
-"""
+Select the best single adjustment per valve and output:
+{{"u1": <float>, "u2": <float>}}
+'''  
 )
 
 def aggregate_actions(candidates):
     prompt = aggregator_template.format_messages(candidates=str(candidates))
     response = llm(prompt)
-    return parser.parse(response.content)
+    parsed = parser.parse(response.content)
+    # Convert to dict of u1,u2
+    out = {parsed["control_variable"]: parsed["adjustment"]}
+    return {"u1": out.get("u1", 0.0), "u2": out.get("u2", 0.0)}
