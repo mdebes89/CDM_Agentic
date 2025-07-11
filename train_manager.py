@@ -45,11 +45,17 @@ from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.prompts import PromptTemplate
 from four_tank_tools import obs_tool
-from pc_gym.env import FourTankEnv
+import pcgym
+import os, sys
 
+secrets_dir = os.path.expanduser("")
+if secrets_dir not in sys.path:
+    sys.path.insert(0, secrets_dir)
+
+from secrets import OPENAI_API_KEY
 
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
-llm = ChatOpenAI(model="gpt-4", temperature=0)
+llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=OPENAI_API_KEY)
 
 
 # 2) Create the agent with your tools, *plus* a system/prefix that embeds
@@ -131,9 +137,6 @@ def train_episode(env, max_steps=200):
     return total_reward
 
 if __name__ == "__main__":
-    import gym
-    from pc_gym.env import FourTankEnv
-
-    env = gym.make("FourTank-v0")
+    env = pcgym.make("FourTank-v0")
     reward = train_episode(env)
     print(f"Episode complete; total reward = {reward}")
