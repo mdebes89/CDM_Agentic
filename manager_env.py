@@ -17,6 +17,8 @@ import json
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool
+from config import ROLE_COSTS
+from pcgym import gym
 
 from executor import (
     validator_h3, validator_h4,
@@ -76,22 +78,26 @@ class ManagerEnv:
 
         # 4) After roles run, expect final 'action' in data
         action = data.get("u1_u2") or out.get("u1_u2")
-        self.env.step(action)
-        return action, reward
+        obs, raw_reward, done, info = self.env.step(action)
+        # 5) subtract the cost of each role used
+        role_cost = sum(ROLE_COSTS[r] for r in self.current_roles)
+        net_reward = raw_reward - role_cost
+        return action, net_reward, done
 
-    def run_episode(self, max_steps=200):
-        total = 0
+
+    def run_episode(self, max_steps: int = 1000):
+        # 1) reset at episode start
+        obs, info = self.env.reset()
+        total_reward = 0
         for _ in range(max_steps):
-            a, r = self.step()
-            total = self.env.current_reward()
-            if self.env.done:
-                break
-        return total
+            action, reward, done = self.step()
+            total_reward += reward       # 2) accumulate
+            if done:
+                break                   # 3) stop on terminal
+        return total_reward
 
 
 if __name__ == "__main__":
-    import gym
-    from pc_gym.env import FourTankEnv
 
     env = gym.make("FourTank-v0")
     mgr = ManagerEnv(env)

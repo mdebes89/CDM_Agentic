@@ -36,14 +36,6 @@ def make_four_tank_env(x0=None, nsteps=nsteps, tsim=tsim, force_init=False):
     # Setpoint trajectories for each tank (constant here)
     # Must match the model’s state names ["h1","h2","h3","h4"]
 
-    # States = [h1, h2, h3, h4]
-    # Setpoints = [SP1, SP2, SP3, SP4]
-    # → total obs-vector length = 8
-    state_low  = np.zeros(4, dtype=np.float32)
-    state_high = np.ones(4, dtype=np.float32)*2.0
-    sp_low     = np.array([1.0, 0.8, 0.5, 0.3], dtype=np.float32)  # min SP
-    sp_high    = sp_low + 1.0  # e.g. [2.0,1.8,1.5,1.3] to avoid zero-range                                   # constant SP trajectories
-
     # Two pumps: u1 and u2
     a_space = {
         "low": np.array([0.0, 0.0], dtype=np.float32),
