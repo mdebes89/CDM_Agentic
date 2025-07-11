@@ -18,9 +18,10 @@ This file defines:
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-import math
+import json
 
-# Instantiate a deterministic LLM for control decisions\llm = ChatOpenAI(model="gpt-4", temperature=0.0)
+# Instantiate a deterministic LLM for control decisions
+llm = ChatOpenAI(model="gpt-4", temperature=0.0)
 
 # Common parser schema
 action_output_schema = [
@@ -108,7 +109,8 @@ Respond in JSON list of adjustments:
 def conditional_role(actions):
     prompt = conditional_template.format_messages(actions=str(actions))
     response = llm(prompt)
-    return parser.parse(response.content)
+    # expect JSON list
+    return json.loads(response.content)
 
 # 4. Aggregator Role: Final Actions
 aggregator_template = ChatPromptTemplate.from_template(
@@ -125,7 +127,5 @@ Select the best single adjustment per valve and output:
 def aggregate_actions(candidates):
     prompt = aggregator_template.format_messages(candidates=str(candidates))
     response = llm(prompt)
-    parsed = parser.parse(response.content)
-    # Convert to dict of u1,u2
-    out = {parsed["control_variable"]: parsed["adjustment"]}
-    return {"u1": out.get("u1", 0.0), "u2": out.get("u2", 0.0)}
+    # expect JSON {"u1":float, "u2":float}
+    return json.loads(response.content)

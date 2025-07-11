@@ -46,8 +46,8 @@ def make_four_tank_env(x0=None, nsteps=nsteps, tsim=tsim, force_init=False):
 
     # Two pumps: u1 and u2
     a_space = {
-        "low":  np.array([0.0, 0.0], dtype=np.float32),
-        "high": np.array([1.0, 1.0], dtype=np.float32),
+        "low": np.array([0.0, 0.0], dtype=np.float32),
+        "high": np.array([10.0, 10.0], dtype=np.float32),
     }
     
     # randomize initial tank heights each episode between their o_space bounds

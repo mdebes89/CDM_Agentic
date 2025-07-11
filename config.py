@@ -12,16 +12,11 @@ ROLE_COSTS is a dict mapping each role name (e.g. "validator_x1", "aggregator") 
 """
 
 ROLE_COSTS = {
-    # CSTR cost - Not applied in this implementation
-    "validator_T":   0.01,
-    "actionizer_T":  0.05,
-    "validator_C":   0.01,
-    "actionizer_C":  0.05,
-
-    # Four‐tank roles
-    "validator_x1":   0, # 0.01,
-    "actionizer_x1":  0, # 0.05,
-    "validator_x2":   0, # 0.01,
-    "actionizer_x2":  0, # 0.05,
-
+    # Four-tank roles must match your executor.py names:
+    "validator_h3": 0.01,
+    "validator_h4": 0.01,
+    "actionizer_h3": 0.05,
+    "actionizer_h4": 0.05,
+    "conditional_role": 0.02,
+    "aggregate_actions": 0.02,
 }

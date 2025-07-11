@@ -16,16 +16,36 @@ It tracks debugging info so you can see which roles ran, what they proposed, and
 import json
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from tools.role_tools import perception_tool, planning_tool, control_tool
+from langchain.tools import Tool
+
+from executor import (
+    validator_h3, validator_h4,
+    actionizer_h3, actionizer_h4,
+    conditional_role, aggregate_actions
+)
+
+# wrap each as a Tool
+tools = [
+    Tool.from_function(validator_h3, name="validator_h3",
+                       description="Return yes/no if h3 error exceeds deadband"),
+    Tool.from_function(validator_h4, name="validator_h4",
+                       description="Return yes/no if h4 error exceeds deadband"),
+    Tool.from_function(actionizer_h3, name="actionizer_h3",
+                       description="Propose an adjustment for valve u1 based on h3 error"),
+    Tool.from_function(actionizer_h4, name="actionizer_h4",
+                       description="Propose an adjustment for valve u2 based on h4 error"),
+    Tool.from_function(conditional_role, name="conditional_role",
+                       description="Resolve conflicts among proposed adjustments"),
+    Tool.from_function(aggregate_actions, name="aggregate_actions",
+                       description="Finalize u1/u2 adjustment JSON"),
+]
 
 class ManagerEnv:
     def __init__(self, env):
         self.env = env
         self.llm = ChatOpenAI(model="gpt-4", temperature=0)
-        # Register all possible roles
-        self.tools = [perception_tool, planning_tool, control_tool]
         self.agent = initialize_agent(
-            tools=self.tools,
+            tools=tools,
             llm=self.llm,
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=False,
@@ -34,32 +54,28 @@ class ManagerEnv:
 
     def step(self):
         # 1) Get raw observation & reward
-        raw_obs = self.env.get_observation()  
+        obs = self.env.get_observation()  # full 8-dim
         reward = self.env.current_reward()
 
         # 2) Ask manager which roles to activate
-        role_prompt = (
-            f"Observation: {raw_obs}\n"
+        prompt = (
+            f"Observation: {obs.tolist()}\n"
             f"Reward: {reward}\n"
-            "Select which roles to run this step from [perception_role, planning_role, control_role].\n"
-            "Return JSON: {\"roles\": [<role_names>] }."
+            "Which roles should run this step? "
+            "Return JSON {\"roles\": [<tool_names>] }."
         )
-        role_response = self.agent.run(role_prompt)
-        selected = json.loads(role_response)["roles"]
+        roles = json.loads(self.agent.run(prompt))["roles"]
 
         # 3) Execute each selected role in sequence, feeding outputs forward
-        data = raw_obs
-        for role_name in selected:
-            tool = next(t for t in self.tools if t.name == role_name)
-            out = tool.run(data)
-            data = {**data, **out}  # merge inputs & outputs
+        data = obs.tolist()
+        for role in roles:
+            out = next(t for t in tools if t.name == role).run(data)
+            # if tool returns a dict, merge into data‐vector or keep track
+            if isinstance(out, dict):
+                data = {**{"h": data}, **out}
 
         # 4) After roles run, expect final 'action' in data
-        action = data.get("action")
-        if action is None:
-            raise ValueError("No action produced by roles.")
-        
-        # 5) Apply action to env
+        action = data.get("u1_u2") or out.get("u1_u2")
         self.env.step(action)
         return action, reward
 

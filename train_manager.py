@@ -4,10 +4,12 @@ Created on Sun Jul  6 15:08:57 2025
 
 @author: mdbs1
 
-The train_manager script is setting up a manager agent whose action space is which roles to turn on or off at each time step.
+Train the LLM-based manager to choose which roles to engage each timestep.
 
-Objective: maximize long-term plant performance (keeping tank levels on their set-points) minus the cumulative cost of engaging each computational role.
-
+Objective: 
+  Maximize long-run control performance (keeping h3,h4 at setpoints)
+  minus computational cost of engaging each role.
+  
 Trade-off: engaging more roles usually gives better control proposals (higher perf_reward) but costs the manager more; engaging too few saves cost but risks poor plant behavior.
 
 Four-tank env. spec: observation = [h1,h2,h3,h4, h3_SP,h4_SP], action ∈ [0,10]² : https://maximilianb2.github.io/pc-gym/env/four_tank/
@@ -18,7 +20,9 @@ Typical tank heights span 0.2–0.6 m, so a 5% band (≈0.01–0.03 m) is a reas
 
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from tools.four_tank_tools import obs_tool, act_tool
+from four_tank_tools import obs_tool, act_tool
+from pc_gym.env import FourTankEnv
+from manager_env import ManagerEnv  # your orchestration from manager_env.py
 
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
 llm = ChatOpenAI(model="gpt-4", temperature=0)
