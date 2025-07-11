@@ -43,9 +43,8 @@ A simpler two-tool agentic loop (observe → prompt LLM → parse JSON → apply
 
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from langchain.prompts import PromptTemplate
 from four_tank_tools import obs_tool
-import pcgym
+from four_tank_env import make_four_tank_env
 import os, sys
 
 secrets_dir = os.path.expanduser("")
@@ -66,31 +65,26 @@ llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=OPENAI_API_KEY)
 SYSTEM_PREFIX = """
 You control a PC-Gym Four-Tank process.
 - Obs vector: [h1,h2,h3,h4,h3_SP,h4_SP] ∈ [0.2,0.6] m
-- Action: {"a1":0–10, "a2":0–10}
+- Action: {{\"a1\":0–10, \"a2\":0–10}}
 - Reward each step = –(|h3–h3_SP| + |h4–h4_SP|) – Σ(role_costs)
 - Deadband on h3,h4: ±5% of setpoint (≈±0.01–0.03 m)
 - Role costs: validator_h3=0.1, validator_h4=0.1,
   actionizer_h3=0.2, actionizer_h4=0.2,
   conditional=0.05, aggregator=0.05
 Tools:
-- read_observation(env) → {{"h":[...]} }
-- apply_action(env,a1,a2) → {{"obs":[...],"reward":float,"done":bool}}
+- read_observation(env) → {{\"h\":[...]}}
+- apply_action(env,a1,a2) → {{\"obs\":[...],\"reward\":float,\"done\":bool}}
 
 Example:
 Observation: [0.45,0.47,0.30,0.32,0.30,0.30]
 Reward so far: –0.02
-→ {{ "a1": 4.8, "a2": 5.2 }}
+→ {{\"a1\": 4.8, \"a2\": 5.2}}
 
 Respond **only** with the next action JSON, no extra text.
 """
 
 # We use LangChain's built-in zero-shot template slots:
-PREFIX_TEMPLATE = SYSTEM_PREFIX + "\nObservation: {obs}\nReward so far: {total_reward}\n→"
-
-prompt = PromptTemplate(
-    template=PREFIX_TEMPLATE,
-    input_variables=["obs","total_reward"],
-)
+HUMAN_SUFFIX = "{agent_scratchpad}\nObservation: {obs}\nReward so far: {total_reward}\n→ "
 
 manager_agent = initialize_agent(
     tools=[obs_tool],
@@ -99,8 +93,8 @@ manager_agent = initialize_agent(
     verbose=True,
     handle_parsing_errors=True,
     agent_kwargs={
-        "prefix": prompt.template,
-        "format_instructions": prompt.partial_format({"obs":"{{obs}}","total_reward":"{{total_reward}}"}),
+        "prefix": SYSTEM_PREFIX,
+        "suffix": HUMAN_SUFFIX,
     },
 )
 
@@ -113,20 +107,20 @@ def parse_actions(text: str) -> tuple[float, float]:
 def train_episode(env, max_steps=200):
     # Reset env and clear agent memory at episode start
     obs, info = env.reset()
-    manager_agent.memory.clear()
     total_reward = 0
     
     for _ in range(max_steps):       
         # a) Read the latest observation
-        obs_dict = obs_tool.func(env)
+        obs_dict = obs_tool.func(obs)
         # b) Build prompt with obs + cumulative reward
-        prompt = (
-            f"Observation: {obs_dict['h']}\n"
-            f"Reward so far: {total_reward}\n"
-            'Provide next action as JSON: {"a1": <0–10>, "a2": <0–10>}.'
-        )
         # c) Ask the agent for its action
-        response = manager_agent.run(prompt)
+        # format only the HUMAN_SUFFIX with actual obs/reward
+        user_input = (
+        f"Observation: {obs_dict['h']}\n"
+        f"Reward so far: {total_reward}\n"
+        "→ "
+        )
+        response = manager_agent.run(user_input)
         a1, a2 = parse_actions(response)
         # d) Apply that action in the env
         obs, reward, done, info = env.step([a1, a2])
@@ -137,6 +131,7 @@ def train_episode(env, max_steps=200):
     return total_reward
 
 if __name__ == "__main__":
-    env = pcgym.make("FourTank-v0")
+    
+    env = env = make_four_tank_env()
     reward = train_episode(env)
     print(f"Episode complete; total reward = {reward}")
