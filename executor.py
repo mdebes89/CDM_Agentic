@@ -19,6 +19,10 @@ from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 import json
+import re
+import logging                                      # ← add logging import
+
+logger = logging.getLogger(__name__)                # ← instantiate module‐level logger
 
 # Instantiate a deterministic LLM for control decisions
 llm = ChatOpenAI(model="gpt-4", temperature=0.0)
@@ -47,7 +51,8 @@ def call_validator(obs, index, deadband=0.03):
         obs=str(obs), tank=f"h{index}", index=str(index), deadband=deadband
     )
     response = llm(prompt)
-    return "yes" in response.content.lower()
+    resp = response.content.strip().lower()
+    return bool(re.match(r"^yes$", resp))
 
 # Two validators: for tank 3 and tank 4
 
@@ -79,10 +84,20 @@ def call_actionizer(obs, index):
     setpoints = obs[4:]
     err = heights[index-1] - setpoints[index-3]
     valve = f"u{index-2}"  # map tank3->u1, tank4->u2
-    prompt = action_template.format_messages(
-        obs=str(obs), tank=f"h{index}", index=str(index), error=err, valve=valve
+    # Build the initial message list
+    messages = action_template.format_messages(
+        obs=str(obs),
+        tank=f"h{index}",
+        index=str(index),
+        error=err,
+        valve=valve
     )
-    response = llm(prompt)
+    # ← Here we append the parser’s own instructions so the model outputs valid JSON
+    format_instructions = parser.get_format_instructions()
+    messages.append({"text": format_instructions})
+
+    response = llm(messages)
+    # Parse with the StructuredOutputParser
     return parser.parse(response.content)
 
 # Two actionizers: for h3->u1 and h4->u2
@@ -92,40 +107,3 @@ def actionizer_h3(obs):
 
 def actionizer_h4(obs):
     return call_actionizer(obs, index=4)
-
-# 3. Conditional Role: Resolve Conflicts or Combine
-conditional_template = ChatPromptTemplate.from_template(
-    '''
-You are a conflict resolver for the Four-Tank system.
-Given the proposed adjustments:
-{actions}
-
-If any valve appears in multiple proposals, average their adjustments.
-Respond in JSON list of adjustments:
-[{"control_variable": "u1", "adjustment": float}, ...]
-'''  
-)
-
-def conditional_role(actions):
-    prompt = conditional_template.format_messages(actions=str(actions))
-    response = llm(prompt)
-    # expect JSON list
-    return json.loads(response.content)
-
-# 4. Aggregator Role: Final Actions
-aggregator_template = ChatPromptTemplate.from_template(
-    '''
-You are the final aggregator for the Four-Tank control.
-Given candidate adjustments:
-{candidates}
-
-Select the best single adjustment per valve and output:
-{{"u1": <float>, "u2": <float>}}
-'''  
-)
-
-def aggregate_actions(candidates):
-    prompt = aggregator_template.format_messages(candidates=str(candidates))
-    response = llm(prompt)
-    # expect JSON {"u1":float, "u2":float}
-    return json.loads(response.content)

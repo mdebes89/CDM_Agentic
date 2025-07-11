@@ -54,7 +54,7 @@ if secrets_dir not in sys.path:
 from secrets import OPENAI_API_KEY
 
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
-llm = ChatOpenAI(model="gpt-4", temperature=0, api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=OPENAI_API_KEY)
 
 
 # 2) Create the agent with your tools, *plus* a system/prefix that embeds
@@ -84,7 +84,7 @@ Respond **only** with the next action JSON, no extra text.
 """
 
 # We use LangChain's built-in zero-shot template slots:
-HUMAN_SUFFIX = "{agent_scratchpad}\nObservation: {obs}\nReward so far: {total_reward}\n→ "
+HUMAN_SUFFIX = "{agent_scratchpad}\n{input}"
 
 manager_agent = initialize_agent(
     tools=[obs_tool],
@@ -116,9 +116,8 @@ def train_episode(env, max_steps=200):
         # c) Ask the agent for its action
         # format only the HUMAN_SUFFIX with actual obs/reward
         user_input = (
-        f"Observation: {obs_dict['h']}\n"
-        f"Reward so far: {total_reward}\n"
-        "→ "
+        [f"Observation: {obs_dict['h']}\n",
+        f"Reward so far: {total_reward}\n"]
         )
         response = manager_agent.run(user_input)
         a1, a2 = parse_actions(response)
