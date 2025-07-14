@@ -64,6 +64,7 @@ def make_four_tank_env(x0=None, nsteps=nsteps, tsim=tsim, force_init=False):
        "a_space": a_space,
        "x0":      x0,
        "normalize_o": False,    # disable the automatic [-1,+1] scaling
+       "normalize_a": False,   # disable action scaling
     }
     env = pcgym.make_env(params)
     # Force-disable normalization at the object level

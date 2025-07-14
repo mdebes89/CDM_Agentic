@@ -43,59 +43,79 @@ A simpler two-tool agentic loop (observe → prompt LLM → parse JSON → apply
 
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from four_tank_tools import obs_tool
+from langchain.prompts import PromptTemplate
+from langchain.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+    AIMessagePromptTemplate
+)
+from four_tank_tools import obs_tool, act_tool
 from four_tank_env import make_four_tank_env
-import os, sys
-
-secrets_dir = os.path.expanduser("")
-if secrets_dir not in sys.path:
-    sys.path.insert(0, secrets_dir)
+import numpy as np
 
 from secrets import OPENAI_API_KEY
+
+
+# No-op tool to capture the JSON action output
+def set_action(json_str: str) -> str:
+    # AgentExecutor will return this string as the tool result
+    return json_str
 
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
 llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=OPENAI_API_KEY)
 
 
-# 2) Create the agent with your tools, *plus* a system/prefix that embeds
-#    the env specs, role costs, tool API, and one tiny example.
+# 2) Build the chat-style prompt
+system_msg = SystemMessagePromptTemplate.from_template(
+    """You control a PC-Gym Four-Tank process.
+Each step you see six numbers [h1,h2,h3,h4,h3_SP,h4_SP].
+You have one tool: set_action(json) which returns the JSON you pass it.
 
+**Reference:** full environment spec here → https://maximilianb2.github.io/pc-gym/env/four_tank/
 
-# -- The system "prefix" every single call will begin with:
-SYSTEM_PREFIX = """
-You control a PC-Gym Four-Tank process.
-- Obs vector: [h1,h2,h3,h4,h3_SP,h4_SP] ∈ [0.2,0.6] m
-- Action: {{\"a1\":0–10, \"a2\":0–10}}
-- Reward each step = –(|h3–h3_SP| + |h4–h4_SP|) – Σ(role_costs)
-- Deadband on h3,h4: ±5% of setpoint (≈±0.01–0.03 m)
-- Role costs: validator_h3=0.1, validator_h4=0.1,
-  actionizer_h3=0.2, actionizer_h4=0.2,
-  conditional=0.05, aggregator=0.05
-Tools:
-- read_observation(env) → {{\"h\":[...]}}
-- apply_action(env,a1,a2) → {{\"obs\":[...],\"reward\":float,\"done\":bool}}
+When you answer, you MUST output exactly:
 
-Example:
-Observation: [0.45,0.47,0.30,0.32,0.30,0.30]
-Reward so far: –0.02
-→ {{\"a1\": 4.8, \"a2\": 5.2}}
+Thought: <your reasoning>
+Action: apply_action
+Action Input: {"a1": <single-value float between 0.0 and 10.0>, "a2": <single-value float between 0.0 and 10.0>}
 
-Respond **only** with the next action JSON, no extra text.
+You proposed values must be a number values which is either 0 or a positive value up until 10.
+
+Example (illustrative only; do not copy):
+
+  Thought: h3 is slightly above its setpoint and h4 is slightly below, so adjust flows
+  Action: apply_action
+  Action Input: {"a1": 4.2, "a2": 5.8}
+
+No other text, no headers, no “Final Answer:”.  
 """
+)
+    
+# 3) Insert the scratchpad slot
+ai_scratchpad = AIMessagePromptTemplate.from_template("{agent_scratchpad}")
 
-# We use LangChain's built-in zero-shot template slots:
-HUMAN_SUFFIX = "{agent_scratchpad}\n{input}"
+    
+# 4) Define the human slot for obs + reward
+human_msg = HumanMessagePromptTemplate.from_template(
+    "Observation: {h}\nReward so far: {reward}"
+)
+
+
+# 5) Combine into one ChatPromptTemplate
+prompt = ChatPromptTemplate.from_messages([
+    system_msg,
+    ai_scratchpad,
+    human_msg,
+])
 
 manager_agent = initialize_agent(
-    tools=[obs_tool],
+    tools=[act_tool],
     llm=llm,
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    prompt=prompt,
     verbose=True,
     handle_parsing_errors=True,
-    agent_kwargs={
-        "prefix": SYSTEM_PREFIX,
-        "suffix": HUMAN_SUFFIX,
-    },
 )
 
 def parse_actions(text: str) -> tuple[float, float]:
@@ -116,13 +136,16 @@ def train_episode(env, max_steps=200):
         # c) Ask the agent for its action
         # format only the HUMAN_SUFFIX with actual obs/reward
         user_input = (
-        [f"Observation: {obs_dict['h']}\n",
-        f"Reward so far: {total_reward}\n"]
+        f"Observation: {obs_dict['h']}\n"
+        f"Reward so far: {total_reward}\n"
         )
         response = manager_agent.run(user_input)
         a1, a2 = parse_actions(response)
+        action = np.array([a1, a2], dtype=np.float32)
         # d) Apply that action in the env
-        obs, reward, done, info = env.step([a1, a2])
+        obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+        
         total_reward += reward
         if done:
             break
