@@ -5,7 +5,8 @@ Created on Fri Jul 11 16:58:44 2025
 @author: mdbs1
 """
 
-from langchain.tools import Tool
+from langchain_core.tools import Tool
+import json
 
 def read_observation(obs):
     # expects obs = [h1,h2,h3,h4,h3_SP,h4_SP]
@@ -15,12 +16,13 @@ def read_observation(obs):
         "h4_SP": obs[5],
     }
 
-def apply_action(env, a1: float, a2: float):
+def apply_action(a1: float, a2: float) -> str:
     """
-    Apply valve voltages directly in [0,10].
+    LLM “chooses” valve settings; returns them as JSON.
+    Your manager loop will parse out a1, a2 and call env.step().
     """
-    env.step([a1, a2])
-    return {"status": "applied"}
+    return json.dumps({"a1": a1, "a2": a2})
+
 
 obs_tool = Tool.from_function(
     func=read_observation,
@@ -28,8 +30,9 @@ obs_tool = Tool.from_function(
     description="Returns the current tank heights and setpoints as a list."
 )
 
-act_tool = Tool.from_function(
+
+raw_act_tool = Tool.from_function(
     func=apply_action,
     name="apply_action",
-    description="Apply two valve settings between 0 and 10 to the four-tank environment."
+    description="Choose two valve settings (floats 0.0–10.0)."
 )

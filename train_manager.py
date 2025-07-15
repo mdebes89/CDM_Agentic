@@ -50,7 +50,7 @@ from langchain.prompts import (
     HumanMessagePromptTemplate,
     AIMessagePromptTemplate
 )
-from four_tank_tools import obs_tool, act_tool
+from four_tank_tools import obs_tool, apply_action
 from four_tank_env import make_four_tank_env
 import numpy as np
 
@@ -110,9 +110,9 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 manager_agent = initialize_agent(
-    tools=[act_tool],
+    tools=[apply_action],
     llm=llm,
-    agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+    agent=AgentType.OPENAI_FUNCTIONS,
     prompt=prompt,
     verbose=True,
     handle_parsing_errors=True,
