@@ -24,6 +24,8 @@ import logging                                      # ← add logging import
 
 logger = logging.getLogger(__name__)                # ← instantiate module‐level logger
 
+
+
 # Instantiate a deterministic LLM for control decisions
 llm = ChatOpenAI(model="gpt-4", temperature=0.0)
 
@@ -43,6 +45,8 @@ Given the current state:
 
 Check if the error for tank {tank} i.e. |h{index} - h{index}_SP| exceeds the deadband ({deadband:.3f} m).
 Respond with "yes" or "no".
+
+**Reference:** full environment spec here → https://maximilianb2.github.io/pc-gym/env/four_tank/
 '''  
 )
 
@@ -72,9 +76,14 @@ Given the current state:
 Error for tank {tank}: {error:.3f} m (h{index} - h{index}_SP).
 Recommend an adjustment for valve {valve} by specifying:
 - control_variable: one of ["u1", "u2"]
-- adjustment: a float (positive to increase flow, negative to decrease)
+- Valid adjustment range: {valve_min:.1f} to {valve_max:.1f} (float).
 
 Respond in JSON: {{"control_variable": "<u1|u2>", "adjustment": <float>}}
+
+– Use a positive adjustment to increase flow, negative to decrease.
+– Don’t output any other keys or commentary.
+
+**Reference:** full environment spec here → https://maximilianb2.github.io/pc-gym/env/four_tank/
 '''  
 )
 
@@ -83,14 +92,15 @@ def call_actionizer(obs, index):
     heights = obs[:4]
     setpoints = obs[4:]
     err = heights[index-1] - setpoints[index-3]
-    valve = f"u{index-2}"  # map tank3->u1, tank4->u2
+    VALVE_MIN, VALVE_MAX = 0.0, 10.0 # Env limit. Could be dervied from env directly.
     # Build the initial message list
     messages = action_template.format_messages(
         obs=str(obs),
         tank=f"h{index}",
         index=str(index),
         error=err,
-        valve=valve
+        valve_min=VALVE_MIN,   # exact match to {valve_min}
+        valve_max=VALVE_MAX,   # exact match to {valve_max}
     )
     # ← Here we append the parser’s own instructions so the model outputs valid JSON
     format_instructions = parser.get_format_instructions()

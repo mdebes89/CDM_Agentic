@@ -154,6 +154,6 @@ def train_episode(env, max_steps=200):
 
 if __name__ == "__main__":
     
-    env = env = make_four_tank_env()
+    env = make_four_tank_env()
     reward = train_episode(env)
     print(f"Episode complete; total reward = {reward}")
