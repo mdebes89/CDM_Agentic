@@ -56,34 +56,46 @@ import json, re
 from secrets import OPENAI_API_KEY
 
 
-
+set_action_spec = {
+    "name": "set_action",
+    "description": "Capture the manager’s chosen two-element array",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action_input": {
+                "type": "array",
+                "items": {"type": "number"},
+                "minItems": 2,
+                "maxItems": 2
+            }
+        },
+        "required": ["action_input"]
+    },
+}
 
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
 llm = ChatOpenAI(
     model="gpt-4",
     temperature=0,
     openai_api_key=OPENAI_API_KEY,
+    functions=[set_action_spec],  # register our tool
+    function_call="auto",         # always invoke set_action
 )
 
 
 # 2) Build the chat-style prompt
 system_msg = SystemMessagePromptTemplate.from_template(
-    """You control a PC-Gym Four-Tank process.
+    """You control a PC-Gym Four-Tank process. https://maximilianb2.github.io/pc-gym/env/four_tank/
 Each step you see six numbers [h1,h2,h3,h4,h3_SP,h4_SP].
-You have two tools:
-  • apply_action([x,y])   – steps the env and returns status.
-  • set_action(json_str)  – captures your JSON and returns it.
-
-**Reference:** full environment spec here → https://maximilianb2.github.io/pc-gym/env/four_tank/
+You have exactly one tool available:
+  • set_action(action_input) – capture your chosen two-element array [a1, a2].
 
 When you choose your next action, **CALL ONLY** the `set_action` tool. Do NOT emit any other text.
 
-Your tool call must look exactly like:
+Your response MUST be **only**:
 
   Action: set_action
-  Action Input: [<float1>, <float2>]
-
-No markdown, no code fences, no extra prose.   
+  Action Input: {{"action_input": [<float1>, <float2>]}}
 """
 )
     
@@ -93,24 +105,34 @@ ai_scratchpad = AIMessagePromptTemplate.from_template("{agent_scratchpad}")
     
 # 4) Define the human slot for obs + reward
 human_msg = HumanMessagePromptTemplate.from_template(
-    "Observation: {h}\nReward so far: {reward}"
+    """Here is the current state:
+
+    Observation: {h}
+    Last step reward: {last_reward}
+    Total reward: {total_reward}
+
+Based on the above, decide your two‐pump control settings and issue the tool call now."""
 )
 
 
 # 5) Combine into one ChatPromptTemplate
 prompt = ChatPromptTemplate.from_messages([
     system_msg,
-    ai_scratchpad,
+    #ai_scratchpad,
     human_msg,
 ])
 
 manager_agent = initialize_agent(
     tools=[set_action_tool],
     llm=llm,
-    agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+    #agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+    agent=AgentType.OPENAI_FUNCTIONS,
     prompt=prompt,
-    verbose=False,
+    verbose=True,
     handle_parsing_errors=True,
+    agent_kwargs={
+    "function_call": {"name": "set_action"}
+    },
 )
 
 def parse_actions(text: str) -> tuple[float, float]:
@@ -132,14 +154,28 @@ def train_episode(env, max_steps=200):
             f"Observation: {obs_dict['h']}\n"
             f"Last step reward: {last_reward}\n"
             f"Total reward: {total_reward}\n\n"
-            "Example of desired output:\n"
-            "{\n"
-            "  \"action\": \"apply_action\",\n"
-            "  \"action_input\": [2.5, 4.0]\n"
-            "}\n"
         )
         # 3) Ask manager → calls set_action, returns e.g. "[3.2,5.7]"
+        
+        messages = prompt.format_messages(
+            h=obs_dict["h"],
+            last_reward=last_reward,
+            total_reward=total_reward
+        )
+        
+        print("╔═ FULL PROMPT MESSAGES ═════════════════════════════════════════╗")
+        for msg in messages:
+            # Show the class name (e.g. SystemMessage, HumanMessage, AIMessage)
+            role_name = type(msg).__name__
+            print(f"{role_name}:")
+            # Every BaseMessage has .content
+            print(msg.content)
+            print("────────────────────────────────────────────────────────")
+        print("╚═ END FULL PROMPT ════════════════════════════════════════════")
         raw = manager_agent.run(user_input)
+        print("┌─ RAW RESPONSE ─────────────────────────────────────────────")
+        print(raw)
+        print("└─ END RESPONSE ──────────────────────────────────────────────")
         # 4) Parse that array
         m = re.search(r"\[\s*[-+]?\d*\.?\d+\s*,\s*[-+]?\d*\.?\d+\s*\]", raw)
         if not m:
