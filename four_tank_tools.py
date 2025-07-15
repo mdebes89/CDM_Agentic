@@ -6,7 +6,6 @@ Created on Fri Jul 11 16:58:44 2025
 """
 
 from langchain_core.tools import Tool
-import json
 
 def read_observation(obs):
     # expects obs = [h1,h2,h3,h4,h3_SP,h4_SP]
@@ -18,13 +17,18 @@ def read_observation(obs):
 
 def apply_action(input_str: str) -> str:
     """
-    Stub for LangChain: we receive exactly the LLM’s JSON
-    (e.g. '{"a1":5,"a2":7}'), and just echo it back.
-    Your train_manager will then parse and call env.step().
+    Expects input_str like '5.2,3.7'.
+    Parses and returns the same normalized '5.2,3.7' string.
+    The manager will split and env.step() it.
     """
-    # sanity‐check it’s valid JSON
-    json.loads(input_str)
-    return input_str
+    a1_str, a2_str = [s.strip() for s in input_str.split(",")]
+    # validate ranges
+    a1, a2 = float(a1_str), float(a2_str)
+    if not (0 <= a1 <= 10 and 0 <= a2 <= 10):
+        raise ValueError(f"Valve settings out of range: {a1}, {a2}")
+    # echo back
+    return f"{a1},{a2}"
+ 
 
 
 obs_tool = Tool.from_function(
@@ -37,8 +41,5 @@ obs_tool = Tool.from_function(
 act_tool = Tool.from_function(
     func=apply_action,
     name="apply_action",
-    description=(
-        "Accepts a JSON object with exactly two keys, “a1” and “a2” (floats from 0.0 to 10.0), "
-        "and returns that same JSON verbatim."
-    ),
+    description="Take two floats in [0,10] separated by a comma, e.g. '4.2,5.8', and echo them.",
 )

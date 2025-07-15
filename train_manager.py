@@ -119,19 +119,9 @@ manager_agent = initialize_agent(
 )
 
 def parse_actions(text: str) -> tuple[float, float]:
-    """
-    Look specifically for the JSON after 'Action Input:'.
-    This ensures we ignore any other JSON the model might echo.
-    """
-    m = re.search(r"Action Input:\s*(\{.*?\})", text, re.DOTALL)
-    if not m:
-        raise ValueError(f"No 'Action Input' JSON found in:\n{text!r}")
-    payload = m.group(1)
-    data = json.loads(payload)
-    # sanity‐check keys
-    if "a1" not in data or "a2" not in data:
-        raise KeyError(f"Expected keys 'a1' and 'a2' in Action Input, got: {data}")
-    return float(data["a1"]), float(data["a2"])
+    # the tool-run result is just "5.2,3.7"
+    a1_str, a2_str = text.strip().split(",")
+    return float(a1_str), float(a2_str)
 
 def train_episode(env, max_steps=200):
     # Reset env and clear agent memory at episode start
