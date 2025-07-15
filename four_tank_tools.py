@@ -16,12 +16,15 @@ def read_observation(obs):
         "h4_SP": obs[5],
     }
 
-def apply_action(a1: float, a2: float) -> str:
+def apply_action(input_str: str) -> str:
     """
-    LLM “chooses” valve settings; returns them as JSON.
-    Your manager loop will parse out a1, a2 and call env.step().
+    Stub for LangChain: we receive exactly the LLM’s JSON
+    (e.g. '{"a1":5,"a2":7}'), and just echo it back.
+    Your train_manager will then parse and call env.step().
     """
-    return json.dumps({"a1": a1, "a2": a2})
+    # sanity‐check it’s valid JSON
+    json.loads(input_str)
+    return input_str
 
 
 obs_tool = Tool.from_function(
@@ -31,8 +34,11 @@ obs_tool = Tool.from_function(
 )
 
 
-raw_act_tool = Tool.from_function(
+act_tool = Tool.from_function(
     func=apply_action,
     name="apply_action",
-    description="Choose two valve settings (floats 0.0–10.0)."
+    description=(
+        "Accepts a JSON object with exactly two keys, “a1” and “a2” (floats from 0.0 to 10.0), "
+        "and returns that same JSON verbatim."
+    ),
 )

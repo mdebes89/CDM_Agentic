@@ -43,16 +43,16 @@ A simpler two-tool agentic loop (observe → prompt LLM → parse JSON → apply
 
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import initialize_agent, AgentType
-from langchain.prompts import PromptTemplate
 from langchain.prompts import (
     ChatPromptTemplate,
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
     AIMessagePromptTemplate
 )
-from four_tank_tools import obs_tool, apply_action
+from four_tank_tools import obs_tool, act_tool
 from four_tank_env import make_four_tank_env
 import numpy as np
+import json, re
 
 from secrets import OPENAI_API_KEY
 
@@ -70,7 +70,7 @@ llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=OPENAI_API_KEY)
 system_msg = SystemMessagePromptTemplate.from_template(
     """You control a PC-Gym Four-Tank process.
 Each step you see six numbers [h1,h2,h3,h4,h3_SP,h4_SP].
-You have one tool: set_action(json) which returns the JSON you pass it.
+You have one tool: apply_action(json) which returns the JSON you pass it.
 
 **Reference:** full environment spec here → https://maximilianb2.github.io/pc-gym/env/four_tank/
 
@@ -110,19 +110,28 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 manager_agent = initialize_agent(
-    tools=[apply_action],
+    tools=[act_tool],
     llm=llm,
-    agent=AgentType.OPENAI_FUNCTIONS,
+    agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
     prompt=prompt,
     verbose=True,
     handle_parsing_errors=True,
 )
 
 def parse_actions(text: str) -> tuple[float, float]:
-    # e.g. expect JSON: {"a1": 5.2, "a2": 3.1}
-    import json
-    data = json.loads(text)
-    return data["a1"], data["a2"]
+    """
+    Look specifically for the JSON after 'Action Input:'.
+    This ensures we ignore any other JSON the model might echo.
+    """
+    m = re.search(r"Action Input:\s*(\{.*?\})", text, re.DOTALL)
+    if not m:
+        raise ValueError(f"No 'Action Input' JSON found in:\n{text!r}")
+    payload = m.group(1)
+    data = json.loads(payload)
+    # sanity‐check keys
+    if "a1" not in data or "a2" not in data:
+        raise KeyError(f"Expected keys 'a1' and 'a2' in Action Input, got: {data}")
+    return float(data["a1"]), float(data["a2"])
 
 def train_episode(env, max_steps=200):
     # Reset env and clear agent memory at episode start
