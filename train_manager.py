@@ -49,46 +49,41 @@ from langchain.prompts import (
     HumanMessagePromptTemplate,
     AIMessagePromptTemplate
 )
-from four_tank_tools import obs_tool, act_tool
+from four_tank_tools import obs_tool, set_action_tool
 from four_tank_env import make_four_tank_env
 import numpy as np
 import json, re
-
 from secrets import OPENAI_API_KEY
 
 
-# No-op tool to capture the JSON action output
-def set_action(json_str: str) -> str:
-    # AgentExecutor will return this string as the tool result
-    return json_str
+
 
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
-llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(
+    model="gpt-4",
+    temperature=0,
+    openai_api_key=OPENAI_API_KEY,
+)
 
 
 # 2) Build the chat-style prompt
 system_msg = SystemMessagePromptTemplate.from_template(
     """You control a PC-Gym Four-Tank process.
 Each step you see six numbers [h1,h2,h3,h4,h3_SP,h4_SP].
-You have one tool: apply_action(json) which returns the JSON you pass it.
+You have two tools:
+  • apply_action([x,y])   – steps the env and returns status.
+  • set_action(json_str)  – captures your JSON and returns it.
 
 **Reference:** full environment spec here → https://maximilianb2.github.io/pc-gym/env/four_tank/
 
-When you answer, you MUST output exactly:
+When you choose your next action, **CALL ONLY** the `set_action` tool. Do NOT emit any other text.
 
-Thought: <your reasoning>
-Action: apply_action
-Action Input: {"a1": <single-value float between 0.0 and 10.0>, "a2": <single-value float between 0.0 and 10.0>}
+Your tool call must look exactly like:
 
-You proposed values must be a number values which is either 0 or a positive value up until 10.
+  Action: set_action
+  Action Input: [<float1>, <float2>]
 
-Example (illustrative only; do not copy):
-
-  Thought: h3 is slightly above its setpoint and h4 is slightly below, so adjust flows
-  Action: apply_action
-  Action Input: {"a1": 4.2, "a2": 5.8}
-
-No other text, no headers, no “Final Answer:”.  
+No markdown, no code fences, no extra prose.   
 """
 )
     
@@ -110,42 +105,57 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 manager_agent = initialize_agent(
-    tools=[act_tool],
+    tools=[set_action_tool],
     llm=llm,
     agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
     prompt=prompt,
-    verbose=True,
+    verbose=False,
     handle_parsing_errors=True,
 )
 
 def parse_actions(text: str) -> tuple[float, float]:
-    # the tool-run result is just "5.2,3.7"
-    a1_str, a2_str = text.strip().split(",")
-    return float(a1_str), float(a2_str)
+    # text will be something like "[3.5,6.2]"
+    a1, a2 = json.loads(text)
+    return float(a1), float(a2)
 
 def train_episode(env, max_steps=200):
-    # Reset env and clear agent memory at episode start
+    # 1) Read & format obs
     obs, info = env.reset()
     total_reward = 0
+    last_reward = 0.0
     
     for _ in range(max_steps):       
-        # a) Read the latest observation
+        # 1) Read & format obs
         obs_dict = obs_tool.func(obs)
-        # b) Build prompt with obs + cumulative reward
-        # c) Ask the agent for its action
-        # format only the HUMAN_SUFFIX with actual obs/reward
+        # 2) Build prompt
         user_input = (
-        f"Observation: {obs_dict['h']}\n"
-        f"Reward so far: {total_reward}\n"
+            f"Observation: {obs_dict['h']}\n"
+            f"Last step reward: {last_reward}\n"
+            f"Total reward: {total_reward}\n\n"
+            "Example of desired output:\n"
+            "{\n"
+            "  \"action\": \"apply_action\",\n"
+            "  \"action_input\": [2.5, 4.0]\n"
+            "}\n"
         )
-        response = manager_agent.run(user_input)
-        a1, a2 = parse_actions(response)
+        # 3) Ask manager → calls set_action, returns e.g. "[3.2,5.7]"
+        raw = manager_agent.run(user_input)
+        # 4) Parse that array
+        m = re.search(r"\[\s*[-+]?\d*\.?\d+\s*,\s*[-+]?\d*\.?\d+\s*\]", raw)
+        if not m:
+            raise ValueError(f"No [a1,a2] found in:\n{raw!r}")
+        a1, a2 = json.loads(m.group(0))
+        a1, a2 = float(a1), float(a2)
+
         action = np.array([a1, a2], dtype=np.float32)
-        # d) Apply that action in the env
+        # 5) Apply that action in the env
         obs, reward, terminated, truncated, info = env.step(action)
+        # 6) Log and accumulate
+        print(f"Step {_+1:3d}: action=({a1:.3f},{a2:.3f}), reward={reward:.6f}")
         done = terminated or truncated
         
         total_reward += reward
+        last_reward = reward
         if done:
             break
         
