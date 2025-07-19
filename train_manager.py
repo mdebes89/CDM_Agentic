@@ -42,159 +42,131 @@ A simpler two-tool agentic loop (observe → prompt LLM → parse JSON → apply
 """
 
 from langchain.chat_models import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType
-from langchain.prompts import (
-    ChatPromptTemplate,
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-    AIMessagePromptTemplate
-)
-from four_tank_tools import obs_tool, set_action_tool
+from langchain.schema import HumanMessage
+import numpy as np, json, re
 from four_tank_env import make_four_tank_env
-import numpy as np
-import json, re
+from four_tank_tools import obs_tool
 from secrets import OPENAI_API_KEY
 
 
-set_action_spec = {
-    "name": "set_action",
-    "description": "Capture the manager’s chosen two-element array",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "action_input": {
-                "type": "array",
-                "items": {"type": "number"},
-                "minItems": 2,
-                "maxItems": 2
-            }
-        },
-        "required": ["action_input"]
-    },
-}
-
 # 1) Instantiate your LLM (e.g. GPT-4 via OpenAI)
 llm = ChatOpenAI(
-    model="gpt-4",
-    temperature=0,
+    model="gpt-4-0613",
+    temperature=0.1,
     openai_api_key=OPENAI_API_KEY,
-    functions=[set_action_spec],  # register our tool
-    function_call="auto",         # always invoke set_action
 )
 
+    
+PROMPT_TEMPLATE = """
+You are the four-tank control manager for the PC-Gym `four_tank` environment.
+(Ref: https://maximilianb2.github.io/pc-gym/env/four_tank/)
 
-# 2) Build the chat-style prompt
-system_msg = SystemMessagePromptTemplate.from_template(
-    """You control a PC-Gym Four-Tank process. https://maximilianb2.github.io/pc-gym/env/four_tank/
-Each step you see six numbers [h1,h2,h3,h4,h3_SP,h4_SP].
-You have exactly one tool available:
-  • set_action(action_input) – capture your chosen two-element array [a1, a2].
+DEFINITIONS:
+  d3 = h3 - 0.50
+  d4 = h4 - 0.30
+  prev_d3 = previous_h3 - 0.50
+  prev_d4 = previous_h4 - 0.30
 
-When you choose your next action, **CALL ONLY** the `set_action` tool. Do NOT emit any other text.
+CONTROL COUPLING (assumed):
+  a1 ↑ ⇒ h3 ↑ (primary), slight h4 effect.
+  a2 ↑ ⇒ h4 ↑ (primary), slight h3 effect.
 
-Your response MUST be **only**:
+DEADBAND: db = 0.02 (|d3| ≤ db and |d4| ≤ db considered “on target”).
 
-  Action: set_action
-  Action Input: {{"action_input": [<float1>, <float2>]}}
+CURRENT STATE:
+  h1 = {h1:.4f}
+  h2 = {h2:.4f}
+  h3 = {h3:.4f}
+  h4 = {h4:.4f}
+  previous_action = {prev_action}   # [prev_a1, prev_a2]
+  last_reward = {last_reward:.6f}
+  total_reward = {total_reward:.6f}
+
+CONTROL OUTPUT:
+  Choose new pump settings a1, a2 in continuous range [0, 10].
+
+PRIMARY OBJECTIVE:
+  Drive h3 → 0 and h4 → 0 (reduce absolute deviations |h3| and |h4|).
+
+SECONDARY OBJECTIVES / CONSTRAINTS:
+  • Keep actions within [0,10]; if a suggested value is outside, saturate at boundary.
+  • Avoid unnecessary large simultaneous changes (Δa1 and Δa2 both > 1.5) unless BOTH |h3| and |h4| are large (> 0.4).
+  • Encourage *some* adjustment if last_reward ≤ 0 and we are not at boundaries.
+  • Penalize repeating the exact previous action when last_reward ≤ 0 (must adjust at least one pump by ≥ 0.2).
+  • If last_reward improved ( > 0 ), small refinements (|Δa| ≈ 0–0.3) are preferred.
+  • Prefer smooth changes (|Δa| ≤ 0.8) unless there is a large deviation (|h3| or |h4| > 0.7).
+
+DIRECTIONAL HEURISTICS:
+  • If h3 > +0.1 (too high) → decrease a1 modestly (0.2–0.6). If h3 < -0.1 (too low) → increase a1 (0.2–0.6).
+  • If h4 > +0.1 → decrease a2. If h4 < -0.1 → increase a2.
+  • If both h3 and h4 are within a small deadband (|h3|, |h4| ≤ 0.05) → hold or make very small stabilizing tweaks (≤ 0.2).
+  • If h3 deviation magnitude >> h4 (|h3| ≥ |h4| + 0.15) bias more change in a1 than a2, and vice versa.
+
+TIE-BREAKING / SAFETY:
+  • If unsure, bias toward small corrective moves rather than 0 change.
+  • Never output prose or explanation.
+  • The action must not be identical to the previous action when last_reward ≤ 0 (unless both pumps are at a boundary and change is impossible).
+  • If last_reward < 0 and you repeat previous_action exactly, that is penalized.
+
+OUTPUT FORMAT (NO EXTRA TEXT):
+[a1, a2]
+
+DO NOT output explanations, bullet points, or words.
+Invalid: "I propose [4.2, 5.1]"   (contains words)
+Valid: [4.2, 5.1]
+
+REMEMBER: Output ONLY the two pump settings via the function call. No commentary.
 """
-)
-    
-# 3) Insert the scratchpad slot
-ai_scratchpad = AIMessagePromptTemplate.from_template("{agent_scratchpad}")
 
-    
-# 4) Define the human slot for obs + reward
-human_msg = HumanMessagePromptTemplate.from_template(
-    """Here is the current state:
+ARRAY_REGEX = re.compile(r"\[\s*[-+]?\d*\.?\d+(?:e[-+]?\d+)?\s*,\s*[-+]?\d*\.?\d+(?:e[-+]?\d+)?\s*\]")
 
-    Observation: {h}
-    Last step reward: {last_reward}
-    Total reward: {total_reward}
+def decide_action(h_vec, last_reward, total_reward, prev_action):
+    prompt = PROMPT_TEMPLATE.format(
+        h1=h_vec[0], h2=h_vec[1], h3=h_vec[2], h4=h_vec[3],
+        prev_action=list(prev_action),
+        last_reward=last_reward,
+        total_reward=total_reward
+    )
+    msg = llm.predict_messages([HumanMessage(content=prompt)])
+    txt = (msg.content or "").strip()
+    m = ARRAY_REGEX.search(txt)
+    if not m:
+        # fallback: try to extract any two numbers
+        nums = re.findall(r"[-+]?\d*\.?\d+", txt)
+        if len(nums) >= 2:
+            a1, a2 = float(nums[0]), float(nums[1])
+        else:
+            a1, a2 = prev_action  # fallback: keep previous
+    else:
+        a1, a2 = json.loads(m.group(0))
+    # clamp + minimal exploration if no change but reward bad
+    a1 = min(10.0, max(0.0, float(a1)))
+    a2 = min(10.0, max(0.0, float(a2)))
+    if last_reward <= 0 and abs(a1 - prev_action[0]) < 0.15 and abs(a2 - prev_action[1]) < 0.15:
+        # force slight exploration
+        a1 = min(10, max(0, a1 + np.random.uniform(-0.4, 0.4)))
+        a2 = min(10, max(0, a2 + np.random.uniform(-0.4, 0.4)))
+    return a1, a2
 
-Based on the above, decide your two‐pump control settings and issue the tool call now."""
-)
-
-
-# 5) Combine into one ChatPromptTemplate
-prompt = ChatPromptTemplate.from_messages([
-    system_msg,
-    #ai_scratchpad,
-    human_msg,
-])
-
-manager_agent = initialize_agent(
-    tools=[set_action_tool],
-    llm=llm,
-    #agent=AgentType.CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-    agent=AgentType.OPENAI_FUNCTIONS,
-    prompt=prompt,
-    verbose=True,
-    handle_parsing_errors=True,
-    agent_kwargs={
-    "function_call": {"name": "set_action"}
-    },
-)
-
-def parse_actions(text: str) -> tuple[float, float]:
-    # text will be something like "[3.5,6.2]"
-    a1, a2 = json.loads(text)
-    return float(a1), float(a2)
 
 def train_episode(env, max_steps=200):
-    # 1) Read & format obs
-    obs, info = env.reset()
-    total_reward = 0
+    obs, _ = env.reset()
+    total_reward = 0.0
     last_reward = 0.0
-    
-    for _ in range(max_steps):       
-        # 1) Read & format obs
+    prev_action = (5.0, 5.0)
+    for step in range(max_steps):
         obs_dict = obs_tool.func(obs)
-        # 2) Build prompt
-        user_input = (
-            f"Observation: {obs_dict['h']}\n"
-            f"Last step reward: {last_reward}\n"
-            f"Total reward: {total_reward}\n\n"
-        )
-        # 3) Ask manager → calls set_action, returns e.g. "[3.2,5.7]"
-        
-        messages = prompt.format_messages(
-            h=obs_dict["h"],
-            last_reward=last_reward,
-            total_reward=total_reward
-        )
-        
-        print("╔═ FULL PROMPT MESSAGES ═════════════════════════════════════════╗")
-        for msg in messages:
-            # Show the class name (e.g. SystemMessage, HumanMessage, AIMessage)
-            role_name = type(msg).__name__
-            print(f"{role_name}:")
-            # Every BaseMessage has .content
-            print(msg.content)
-            print("────────────────────────────────────────────────────────")
-        print("╚═ END FULL PROMPT ════════════════════════════════════════════")
-        raw = manager_agent.run(user_input)
-        print("┌─ RAW RESPONSE ─────────────────────────────────────────────")
-        print(raw)
-        print("└─ END RESPONSE ──────────────────────────────────────────────")
-        # 4) Parse that array
-        m = re.search(r"\[\s*[-+]?\d*\.?\d+\s*,\s*[-+]?\d*\.?\d+\s*\]", raw)
-        if not m:
-            raise ValueError(f"No [a1,a2] found in:\n{raw!r}")
-        a1, a2 = json.loads(m.group(0))
-        a1, a2 = float(a1), float(a2)
-
+        h_vec = obs_dict["h"]
+        a1, a2 = decide_action(h_vec, last_reward, total_reward, prev_action)
         action = np.array([a1, a2], dtype=np.float32)
-        # 5) Apply that action in the env
-        obs, reward, terminated, truncated, info = env.step(action)
-        # 6) Log and accumulate
-        print(f"Step {_+1:3d}: action=({a1:.3f},{a2:.3f}), reward={reward:.6f}")
-        done = terminated or truncated
-        
+        obs, reward, terminated, truncated, _ = env.step(action)
+        print(f"Step {step+1:03d}: h={np.round(h_vec,3)} act=({a1:.2f},{a2:.2f}) "
+              f"Δ=({a1-prev_action[0]:+.2f},{a2-prev_action[1]:+.2f}) r={reward:.4f}")
         total_reward += reward
         last_reward = reward
-        if done:
+        prev_action = (a1, a2)
+        if terminated or truncated:
             break
-        
     return total_reward
 
 if __name__ == "__main__":
