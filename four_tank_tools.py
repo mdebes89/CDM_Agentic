@@ -11,8 +11,8 @@ def read_observation(obs):
     # expects obs = [h1,h2,h3,h4,h3_SP,h4_SP]
     return {
         "h":     obs[:4],
-        "h3_SP": obs[4],
-        "h4_SP": obs[5],
+        "h3_SP": obs[6],
+        "h4_SP": obs[7],
     }
 
 # No-op tool to capture the JSON action output
