@@ -149,9 +149,10 @@ def decide_action(h_vec, last_reward, total_reward, prev_action):
     return a1, a2
 
 
-def train_episode(env, max_steps=200):
-    obs, _ = env.reset()
-    total_reward = 0.0
+def train_episode(env, max_steps=10):
+    # 1) Read & format obs
+    obs, info = env.reset()
+    total_reward = 0
     last_reward = 0.0
     prev_action = (5.0, 5.0)
     for step in range(max_steps):
