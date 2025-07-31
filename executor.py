@@ -11,20 +11,17 @@ Updated for Four-Tank Environment Control using Agentic Roles
 This file defines:
 1. Validator roles that check whether each tank's error is outside the deadband.
 2. Actionizer roles that propose control adjustments for each valve.
-3. Conditional role to resolve conflicting proposals.
-4. Aggregator role to merge candidate adjustments into final actions.
+3. Conditional role to resolve conflicting proposals. Not implemented.
+4. Aggregator role to merge candidate adjustments into final actions. Not implemented.
+
+This script is not fully implemented / used during our training script.
+
 """
 
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
-import json
 import re
-import logging                                      # ← add logging import
-
-logger = logging.getLogger(__name__)                # ← instantiate module‐level logger
-
-
 
 # Instantiate a deterministic LLM for control decisions
 llm = ChatOpenAI(model="gpt-4", temperature=0.0)
